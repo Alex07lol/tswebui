@@ -1,0 +1,19 @@
+{
+  "id": "phase0_20260908",
+  "title": "Phase 0 — Foundation",
+  "type": "feature",
+  "status": "complete",
+  "created": "2026-09-08T04:33:00Z",
+  "updated": "2026-09-08T06:26:00Z",
+  "current_phase": 6,
+  "current_task": "6.4",
+  "phases": {
+    "total": 6,
+    "completed": 6
+  },
+  "tasks": {
+    "total": 29,
+    "completed": 29
+  },
+  "commits": []
+}
