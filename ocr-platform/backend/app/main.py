@@ -10,9 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import create_all_tables
 from app.core.logging import configure_logging, get_logger
-from app.providers.ocr.registry import list_providers
+from app.providers.ocr.registry import list_providers, register_provider
+from app.services.ocr.tesseract import TesseractProvider
 
 log = get_logger(__name__)
+
+
+def _register_providers() -> None:
+    """Register all built-in providers."""
+    if "tesseract" not in list_providers():
+        register_provider(TesseractProvider())
 
 
 @asynccontextmanager
@@ -26,12 +33,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         debug=settings.debug,
     )
 
-    # Auto-create tables in development/testing (production uses Alembic)
     if settings.environment in ("development", "testing"):
         await create_all_tables()
         log.info("Database tables ensured")
 
-    # Register built-in providers
     _register_providers()
     log.info("Registered OCR providers", providers=list_providers())
 
@@ -40,16 +45,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("Shutting down OCR Platform")
 
 
-def _register_providers() -> None:
-    """Register all built-in providers at startup."""
-    from app.providers.ocr.registry import register_provider
-    from app.services.ocr.tesseract import TesseractProvider
-
-    register_provider(TesseractProvider())
-
-
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    _register_providers()
+
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -66,9 +65,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Attach routers
-    from app.api import health
+    # Attach all API routers
+    from app.api import configurations, discovery, documents, extraction, health, ocr
+
     app.include_router(health.router, prefix="/api", tags=["health"])
+    app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
+    app.include_router(ocr.router, prefix="/api/ocr", tags=["ocr"])
+    app.include_router(configurations.router, prefix="/api/configurations", tags=["configurations"])
+    app.include_router(extraction.router, prefix="/api/extraction", tags=["extraction"])
+    app.include_router(discovery.router, prefix="/api", tags=["discovery"])
 
     return app
 

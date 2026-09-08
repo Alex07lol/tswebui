@@ -1,4 +1,4 @@
-# OCR Platform (`tdwebui`)
+# OCR Platform (`tswebui`)
 
 A modular, configurable OCR extraction platform built on Tesseract.
 

@@ -1,4 +1,4 @@
-"""Async SQLAlchemy engine, session factory, and declarative Base."""
+"""Database engine and session factory."""
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -13,12 +13,14 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
+# Create the async engine
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     pool_pre_ping=True,
 )
 
+# Session factory
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
@@ -29,13 +31,13 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 class Base(DeclarativeBase):
-    """Declarative base shared by all ORM models."""
+    """Declarative base for all SQLAlchemy ORM models."""
 
     type_annotation_map: dict[Any, Any] = {}
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency: yields a database session and handles commit/rollback."""
+    """FastAPI dependency that provides a database session per request."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -48,6 +50,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def create_all_tables() -> None:
-    """Create all tables directly (development/testing only — production uses Alembic)."""
+    """Create all tables (used in development/testing). Production uses Alembic."""
+    import app.models  # noqa: F401 - Ensure all models are registered on Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
