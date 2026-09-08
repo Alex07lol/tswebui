@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "id": "standard-invoice-v1",
+  "name": "Standard Invoice Extraction",
+  "description": "Extracts invoice number, dates, totals, and line-item tables.",
+  "ocr_profile": {
+    "provider": "tesseract",
+    "language": "eng",
+    "psm": 6,
+    "oem": 3,
+    "preprocessing": [
+      {"operation": "grayscale"},
+      {"operation": "autocontrast"},
+      {"operation": "threshold", "threshold": 160}
+    ]
+  },
+  "fields": [
+    {
+      "id": "inv_num",
+      "display_name": "Invoice Number",
+      "output": {
+        "variable": "invoice_number",
+        "type": "string"
+      },
+      "extraction": {
+        "strategy": "anchored_pattern",
+        "anchor": {
+          "value": "Invoice Number",
+          "match": "fuzzy",
+          "minimum_similarity": 0.8
+        },
+        "search": {
+          "direction": "after",
+          "scope": "same_line",
+          "max_lines": 1
+        },
+        "pattern": {
+          "type": "template",
+          "value": "INV-{YYYY}-{NNNNN}"
+        }
+      },
+      "normalization": ["trim", "uppercase"],
+      "validation": {
+        "required": true,
+        "regex": "^INV-\\d{4}-\\d{5}$"
+      },
+      "priority": 100
+    },
+    {
+      "id": "inv_date",
+      "display_name": "Invoice Date",
+      "output": {
+        "variable": "invoice_date",
+        "type": "date"
+      },
+      "extraction": {
+        "strategy": "anchored_pattern",
+        "anchor": {
+          "value": "Date",
+          "match": "fuzzy",
+          "minimum_similarity": 0.85
+        },
+        "search": {
+          "direction": "after",
+          "scope": "same_line"
+        },
+        "pattern": {
+          "type": "typed",
+          "named_type": "date"
+        }
+      },
+      "normalization": ["trim"],
+      "validation": {
+        "required": true
+      },
+      "priority": 90
+    },
+    {
+      "id": "tot_amount",
+      "display_name": "Total Amount",
+      "output": {
+        "variable": "total_amount",
+        "type": "currency"
+      },
+      "extraction": {
+        "strategy": "anchored_pattern",
+        "anchor": {
+          "value": "Total Amount Due",
+          "match": "fuzzy",
+          "minimum_similarity": 0.75
+        },
+        "search": {
+          "direction": "after",
+          "scope": "same_line"
+        },
+        "pattern": {
+          "type": "typed",
+          "named_type": "currency"
+        }
+      },
+      "normalization": ["trim", "clean_currency"],
+      "validation": {
+        "required": true,
+        "min_value": 0.0
+      },
+      "priority": 80
+    },
+    {
+      "id": "line_items",
+      "display_name": "Line Items Table",
+      "output": {
+        "variable": "line_items",
+        "type": "string"
+      },
+      "extraction": {
+        "strategy": "table",
+        "pattern": {
+          "type": "example",
+          "examples": ["item", "qty", "price", "total"]
+        }
+      },
+      "priority": 70
+    }
+  ]
+}

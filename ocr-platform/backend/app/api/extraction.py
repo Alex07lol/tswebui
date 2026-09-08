@@ -29,7 +29,8 @@ ocr_service = OCRService()
 
 class RunExtractionRequest(BaseModel):
     document_id: str
-    config_id: str
+    config_id: str | None = None
+    config_version_id: str | None = None
     version_number: int | None = None
 
 
@@ -39,24 +40,33 @@ async def run_extraction_job(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Execute an extraction job for a document using a published configuration."""
-    cfg_stmt = (
-        select(Configuration)
-        .where(Configuration.id == payload.config_id)
-        .options(selectinload(Configuration.versions))
-    )
-    res = await session.execute(cfg_stmt)
-    config = res.scalar_one_or_none()
-    if not config or not config.versions:
-        raise HTTPException(status_code=404, detail="Configuration not found")
-
-    if payload.version_number:
-        version = next(
-            (v for v in config.versions if v.version_number == payload.version_number), None
+    version = None
+    if payload.config_version_id:
+        ver_stmt = select(ConfigurationVersion).where(ConfigurationVersion.id == payload.config_version_id)
+        version = (await session.execute(ver_stmt)).scalar_one_or_none()
+        if not version:
+            raise HTTPException(status_code=404, detail="Configuration version not found")
+    elif payload.config_id:
+        cfg_stmt = (
+            select(Configuration)
+            .where(Configuration.id == payload.config_id)
+            .options(selectinload(Configuration.versions))
         )
+        res = await session.execute(cfg_stmt)
+        config = res.scalar_one_or_none()
+        if not config or not config.versions:
+            raise HTTPException(status_code=404, detail="Configuration not found")
+
+        if payload.version_number:
+            version = next(
+                (v for v in config.versions if v.version_number == payload.version_number), None
+            )
+        else:
+            # Prefer active version, fallback to latest
+            active_versions = [v for v in config.versions if v.status == "active"]
+            version = active_versions[0] if active_versions else max(config.versions, key=lambda v: v.version_number)
     else:
-        # Prefer active version, fallback to latest
-        active_versions = [v for v in config.versions if v.status == "active"]
-        version = active_versions[0] if active_versions else max(config.versions, key=lambda v: v.version_number)
+        raise HTTPException(status_code=400, detail="Must provide either config_id or config_version_id")
 
     if not version or not version.config_snapshot:
         raise HTTPException(status_code=400, detail="Configuration version has no valid rule snapshot")
@@ -136,10 +146,11 @@ async def run_extraction_job(
     await session.flush()
 
     return {
+        "id": job_id,
         "job_id": job_id,
         "result_id": result_id,
         "document_id": payload.document_id,
-        "config_id": config.id,
+        "config_id": version.configuration_id,
         "version_number": version.version_number,
         "overall_confidence": round(avg_conf, 4),
         "fields": values_out,

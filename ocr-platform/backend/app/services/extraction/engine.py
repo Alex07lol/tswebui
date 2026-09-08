@@ -49,7 +49,9 @@ class ExtractionEngine:
         cls, ocr_result: Any, config: ConfigurationSchema | dict[str, Any]
     ) -> dict[str, ExtractedFieldResult]:
         """Execute all configured field rules against the document OCR result."""
-        if isinstance(config, dict):
+        if isinstance(config, list):
+            fields_data = config
+        elif isinstance(config, dict):
             fields_data = config.get("fields", [])
         else:
             fields_data = config.fields
@@ -73,11 +75,18 @@ class ExtractionEngine:
     ) -> ExtractedFieldResult:
         """Extract a single field by evaluating its extraction rule."""
         if isinstance(field_cfg, dict):
-            field_id = field_cfg.get("id", "field")
-            out_var = field_cfg.get("output", {}).get("variable", field_id)
-            rule = field_cfg.get("extraction", {})
-            norm_steps = field_cfg.get("normalization", [])
-            val_rules = field_cfg.get("validation", {})
+            field_id = field_cfg.get("field_id") or field_cfg.get("id", "field")
+            out_var = (
+                field_cfg.get("output_variable")
+                or field_cfg.get("output", {}).get("variable")
+                or field_id
+            )
+            rule = field_cfg.get("extraction")
+            if not rule and field_cfg.get("rules"):
+                rule = field_cfg["rules"][0]
+            rule = rule or {}
+            norm_steps = field_cfg.get("normalization_steps") or field_cfg.get("normalization", [])
+            val_rules = field_cfg.get("validation_rules") or field_cfg.get("validation", {})
         else:
             field_id = field_cfg.id
             out_var = field_cfg.output.get("variable", field_id) if field_cfg.output else field_id
@@ -132,6 +141,8 @@ class ExtractionEngine:
             return cls._extract_direct_pattern(ocr_result, rule)
         elif strategy == "region":
             return cls._extract_region(ocr_result, rule)
+        elif strategy == "table":
+            return cls._extract_table(ocr_result, rule)
         return {}
 
     @classmethod
@@ -311,6 +322,51 @@ class ExtractionEngine:
                     "page_number": p_num,
                 }
         return {}
+
+    @classmethod
+    def _extract_table(cls, ocr_result: Any, rule: Any) -> dict[str, Any]:
+        """Extract tabular line items using TableExtractor."""
+        from app.services.extraction.table import TableExtractor
+
+        reg_cfg = rule.region if hasattr(rule, "region") else (rule.get("region") if isinstance(rule, dict) else None)
+        page_num = 1
+        if reg_cfg:
+            page_num = reg_cfg.page if hasattr(reg_cfg, "page") else (reg_cfg.get("page", 1) if isinstance(reg_cfg, dict) else 1)
+
+        pages = getattr(ocr_result, "pages", [])
+        target_page = None
+        for p in pages:
+            if getattr(p, "page_number", 1) == page_num:
+                target_page = p
+                break
+        if not target_page and pages:
+            target_page = pages[0]
+
+        if not target_page:
+            return {}
+
+        expected_cols = None
+        pat_cfg = rule.pattern if hasattr(rule, "pattern") else (rule.get("pattern") if isinstance(rule, dict) else None)
+        if pat_cfg:
+            examples = pat_cfg.examples if hasattr(pat_cfg, "examples") else (pat_cfg.get("examples") if isinstance(pat_cfg, dict) else None)
+            if examples:
+                expected_cols = examples
+
+        table_res = TableExtractor.extract_table(target_page, expected_columns=expected_cols)
+        return {
+            "raw_value": json.dumps(table_res.raw_data),
+            "ocr_confidence": table_res.confidence,
+            "pattern_confidence": 1.0,
+            "anchor_confidence": 1.0,
+            "bbox": {
+                "x": 0,
+                "y": 0,
+                "width": getattr(target_page, "width", 1000) or 1000,
+                "height": getattr(target_page, "height", 1000) or 1000,
+            },
+            "source_line": f"Table: {len(table_res.rows)} rows extracted",
+            "page_number": getattr(target_page, "page_number", 1),
+        }
 
     @classmethod
     def _build_candidate(

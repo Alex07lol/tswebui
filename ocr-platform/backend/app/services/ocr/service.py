@@ -47,10 +47,12 @@ class OCRService:
         stmt = (
             select(OCRResult)
             .where(OCRResult.cache_key == cache_key)
+            .order_by(OCRResult.created_at.desc())
+            .limit(1)
             .options(selectinload(OCRResult.pages).selectinload(OCRPage.words))
         )
         res = await session.execute(stmt)
-        return res.scalar_one_or_none()
+        return res.scalars().first()
 
     async def run_ocr_job(self, session: AsyncSession, job_id: str) -> OCRResult:
         """Execute an OCR job for a document and persist all results."""
@@ -103,8 +105,9 @@ class OCRService:
 
             # Ensure an OCRResult record exists tied directly to this document_id
             if cached.document_id != doc.id:
-                doc_cached = await select_doc_result(session, doc.id)
-                if not doc_cached:
+                doc_check_stmt = select(OCRResult).where(OCRResult.document_id == doc.id).limit(1)
+                existing_for_doc = (await session.execute(doc_check_stmt)).scalars().first()
+                if not existing_for_doc:
                     new_res = OCRResult(
                         id=str(uuid.uuid4()),
                         document_id=doc.id,
@@ -225,31 +228,8 @@ class OCRService:
             select(OCRResult)
             .where(OCRResult.document_id == document_id)
             .order_by(OCRResult.created_at.desc())
+            .limit(1)
             .options(selectinload(OCRResult.pages).selectinload(OCRPage.words))
         )
         res = await session.execute(stmt)
-        existing = res.scalar_one_or_none()
-        if existing:
-            return existing
-
-        # Check if another document with same file_hash has OCR results
-        doc_stmt = select(Document).where(Document.id == document_id)
-        doc_res = await session.execute(doc_stmt)
-        doc = doc_res.scalar_one_or_none()
-        if doc and doc.file_hash:
-            match_stmt = (
-                select(OCRResult)
-                .join(Document, Document.id == OCRResult.document_id)
-                .where(Document.file_hash == doc.file_hash)
-                .order_by(OCRResult.created_at.desc())
-                .options(selectinload(OCRResult.pages).selectinload(OCRPage.words))
-            )
-            match_res = await session.execute(match_stmt)
-            return match_res.scalar_one_or_none()
-
-        return None
-
-
-async def select_doc_result(session: AsyncSession, doc_id: str) -> OCRResult | None:
-    stmt = select(OCRResult).where(OCRResult.document_id == doc_id)
-    return (await session.execute(stmt)).scalar_one_or_none()
+        return res.scalars().first()

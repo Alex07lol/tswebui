@@ -66,14 +66,18 @@ def create_app() -> FastAPI:
     )
 
     # Attach all API routers
-    from app.api import configurations, discovery, documents, extraction, health, ocr
+    from app.api import audit, auth, configurations, discovery, documents, extraction, health, ocr, results, tests
 
     app.include_router(health.router, prefix="/api", tags=["health"])
+    app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+    app.include_router(audit.router, prefix="/api/audit-logs", tags=["audit"])
     app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
     app.include_router(ocr.router, prefix="/api/ocr", tags=["ocr"])
     app.include_router(configurations.router, prefix="/api/configurations", tags=["configurations"])
     app.include_router(extraction.router, prefix="/api/extraction", tags=["extraction"])
     app.include_router(discovery.router, prefix="/api", tags=["discovery"])
+    app.include_router(tests.router, prefix="/api/tests", tags=["tests"])
+    app.include_router(results.router, prefix="/api/results", tags=["results"])
 
     return app
 

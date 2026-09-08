@@ -24,10 +24,14 @@ router = APIRouter()
 ocr_service = OCRService()
 
 
+import re
+
+
 class CreateConfigRequest(BaseModel):
     name: str
-    slug: str
+    slug: str | None = None
     description: str | None = None
+    fields: list[dict[str, Any]] | None = None
     config: ConfigurationSchema | dict[str, Any] | None = None
 
 
@@ -42,19 +46,31 @@ async def create_configuration(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Create a new extraction configuration or add a draft version if slug exists."""
+    slug = payload.slug or re.sub(r"[^a-zA-Z0-9_-]", "-", payload.name.lower().strip())
     existing_stmt = (
         select(Configuration)
-        .where(Configuration.slug == payload.slug)
+        .where(Configuration.slug == slug)
         .options(selectinload(Configuration.versions))
     )
     res = await session.execute(existing_stmt)
     existing = res.scalar_one_or_none()
 
-    raw_config = (
-        payload.config.dict()
-        if hasattr(payload.config, "dict")
-        else (payload.config or {"schema_version": 1, "id": payload.slug, "name": payload.name, "fields": []})
-    )
+    if payload.config:
+        raw_config = payload.config.dict() if hasattr(payload.config, "dict") else payload.config
+    elif payload.fields:
+        raw_config = {
+            "schema_version": 1,
+            "id": slug,
+            "name": payload.name,
+            "fields": payload.fields,
+        }
+    else:
+        raw_config = {
+            "schema_version": 1,
+            "id": slug,
+            "name": payload.name,
+            "fields": [],
+        }
 
     if existing:
         next_ver_num = (
@@ -74,14 +90,16 @@ async def create_configuration(
             "name": existing.name,
             "slug": existing.slug,
             "current_version": version.version_number,
+            "version_id": version.id,
             "status": version.status,
+            "versions": [{"id": version.id, "version_number": version.version_number, "status": version.status}],
         }
 
     config_id = str(uuid.uuid4())
     config = Configuration(
         id=config_id,
         name=payload.name,
-        slug=payload.slug,
+        slug=slug,
         description=payload.description,
     )
     session.add(config)
@@ -102,7 +120,9 @@ async def create_configuration(
         "name": config.name,
         "slug": config.slug,
         "current_version": version.version_number,
+        "version_id": version.id,
         "status": version.status,
+        "versions": [{"id": version.id, "version_number": version.version_number, "status": version.status}],
     }
 
 
