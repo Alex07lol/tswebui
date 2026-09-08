@@ -100,6 +100,46 @@ async def get_document(
     )
 
 
+@router.get("/{document_id}/file")
+async def get_document_file(
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Download original document file."""
+    doc = await doc_service.get_document(session, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not doc_service.storage.exists(doc.storage_path):
+        raise HTTPException(status_code=404, detail="Document file not found in storage")
+    data = doc_service.storage.load(doc.storage_path)
+    return Response(
+        content=data,
+        media_type=doc.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
+    )
+
+
+@router.get("/{document_id}/pages/{page_number}/image")
+async def get_document_page_image(
+    document_id: str,
+    page_number: int,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Get rendered PNG image for a specific page."""
+    doc = await doc_service.get_document(session, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    page_key = f"documents/{document_id}/pages/page_{page_number}.png"
+    if not doc_service.storage.exists(page_key):
+        # Fallback to original if single page and it exists
+        if doc_service.storage.exists(doc.storage_path) and doc.mime_type.startswith("image/"):
+            data = doc_service.storage.load(doc.storage_path)
+            return Response(content=data, media_type=doc.mime_type)
+        raise HTTPException(status_code=404, detail="Page image not found")
+    data = doc_service.storage.load(page_key)
+    return Response(content=data, media_type="image/png")
+
+
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: str,
@@ -109,3 +149,4 @@ async def delete_document(
     deleted = await doc_service.delete_document(session, document_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Document not found")
+

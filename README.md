@@ -110,3 +110,37 @@ bash scripts/dev.sh
 - `POST /api/auth/login` — Authenticate and receive JWT access token.
 - `GET /api/auth/me` — Current user profile.
 - `GET /api/audit-logs` — Immutable audit trail of system events.
+
+---
+
+## WebUI Frontend (`tswebui`)
+
+Built with React 18, TypeScript, Tailwind CSS, and `framer-motion` (motion.dev) following **BKLit UI** minimal design principles:
+
+- **Zero Glassmorphism**: Crisp 1px solid borders (`border-zinc-800`), flat opaque surfaces (`#09090b` / `#0c0c0e`), and high-contrast typography. No blurry backdrops or hazy translucent cards.
+- **High-Legibility Typography**: Geometric sans (**Plus Jakarta Sans** / **Inter**) for navigation and controls paired with **JetBrains Mono** for token coordinates, regex patterns, bounding box dimensions, and audit logs.
+- **Physics-Based Spring Animations**: Fluid drag-and-drop document upload zone with spring scaling (`motion.dev`), dashed border pulse, smooth file chip entrance/exit, and animated tab transitions.
+- **BKLit UI Chart Primitives**:
+  - `BKLitGauge`: Spring-animated 270-degree radial gauge for accuracy and regression pass-rates.
+  - `BKLitSparkline`: Crisp SVG sparklines with spring path reveals (`pathLength`).
+  - `BKLitAreaChart`: Minimalist activity chart with interactive hover tooltips.
+  - `BKLitMetricCard`: Flat metric tiles with trend badges and integrated sparklines.
+  - `BKLitClusterBar`: Proportional cluster density indicator for pattern discovery.
+- **7 Integrated Workspaces**:
+  1. **Overview Dashboard**: Platform health, activity metrics, and quick workflows.
+  2. **OCR Playground**: Drag & drop ingestion, interactive bounding box canvas overlay, word token inspector, and raw OCR text viewer.
+  3. **Visual Rule Builder**: Interactive editor for anchor labels, strategies, ReDoS-safe patterns, and live testing on documents with instant visual match overlay.
+  4. **Pattern Trainer**: Mode B example-based learning, document clustering, and proposal approval.
+  5. **Results & Export**: Structured extraction values, validation pass/fail badges, evidence audit provenance, and 1-click JSON / CSV exports.
+  6. **Regression Suite**: Test suites, test cases, and execution runner with live pass-rate gauge.
+  7. **Audit Logs**: Immutable event trail and system observability.
+
+### Running the Frontend
+
+```bash
+cd ocr-platform/frontend
+npm run dev
+```
+
+Visit `http://localhost:5173` to access the WebUI.
+
