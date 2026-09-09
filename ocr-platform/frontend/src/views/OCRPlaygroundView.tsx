@@ -43,6 +43,7 @@ export const OCRPlaygroundView: React.FC<OCRPlaygroundViewProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [language, setLanguage] = useState('eng');
   const [psm, setPsm] = useState(6);
+  const [ocrProvider, setOcrProvider] = useState<'tesseract' | 'mock_vision'>('tesseract');
 
   // Load document list
   const refreshDocuments = async () => {
@@ -231,10 +232,30 @@ export const OCRPlaygroundView: React.FC<OCRPlaygroundViewProps> = ({
           <div className="bg-[#0c0c0e] border border-zinc-800 rounded-lg p-4 space-y-3 text-xs">
             <div className="flex items-center gap-2 text-zinc-300 font-semibold uppercase tracking-wider text-[11px]">
               <Sliders className="w-3.5 h-3.5" />
-              <span>Tesseract Options</span>
+              <span>OCR Engine Options</span>
             </div>
 
             <div className="space-y-2">
+              {/* Provider selector */}
+              <div>
+                <label className="text-zinc-400 block mb-1">Provider</label>
+                <select
+                  value={ocrProvider}
+                  onChange={(e) => setOcrProvider(e.target.value as 'tesseract' | 'mock_vision')}
+                  className="w-full bg-[#121215] border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-200 font-mono focus:border-zinc-600 outline-none"
+                >
+                  <option value="tesseract">Tesseract OCR</option>
+                  <option value="mock_vision">Mock Vision OCR</option>
+                </select>
+              </div>
+
+              {/* Mock mode warning */}
+              {ocrProvider === 'mock_vision' && (
+                <div className="px-3 py-2 rounded bg-amber-950/40 border border-amber-800/50 text-amber-400 font-mono text-[11px]">
+                  ⚠ Mock Vision mode — synthetic output for demonstration
+                </div>
+              )}
+
               <div>
                 <label className="text-zinc-400 block mb-1">Language</label>
                 <select
@@ -321,6 +342,13 @@ export const OCRPlaygroundView: React.FC<OCRPlaygroundViewProps> = ({
                   </button>
                 ))}
               </div>
+            )}
+
+            {/* Provider badge */}
+            {ocrResult && (
+              <span className="text-[10px] font-mono text-zinc-500 ml-auto">
+                Processed by: <span className="text-zinc-300">{ocrResult.provider || ocrProvider}</span>
+              </span>
             )}
           </div>
 

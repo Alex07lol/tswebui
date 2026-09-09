@@ -32,6 +32,11 @@ export const ExtractionResultsView: React.FC = () => {
   const [filterText, setFilterText] = useState('');
   const [lastJobId, setLastJobId] = useState<string | null>(null);
 
+  // Correction state
+  const [editingFields, setEditingFields] = useState<Record<string, { value: string }>>({});
+  const [correctionSuccess, setCorrectionSuccess] = useState<string | null>(null);
+  const [confidenceBoosts, setConfidenceBoosts] = useState<Record<string, string>>({});
+
   useEffect(() => {
     loadInitData();
   }, []);
@@ -64,6 +69,61 @@ export const ExtractionResultsView: React.FC = () => {
       setSelectedVersionId(found.versions[found.versions.length - 1].id);
     } else {
       setSelectedVersionId('');
+    }
+  };
+
+  const startEditing = (val: ExtractedValue) => {
+    setEditingFields({
+      ...editingFields,
+      [val.field_id]: { value: val.normalized_value || val.raw_value || '' }
+    });
+  };
+
+  const cancelEditing = (fieldId: string) => {
+    const newFields = { ...editingFields };
+    delete newFields[fieldId];
+    setEditingFields(newFields);
+  };
+
+  const saveCorrection = async (val: ExtractedValue) => {
+    if (!result) return;
+    const newVal = editingFields[val.field_id]?.value;
+    if (newVal === undefined) return;
+
+    try {
+      const res = await fetch('/api/corrections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: result.document_id,
+          field_name: val.field_id,
+          original_value: val.normalized_value || val.raw_value || '',
+          corrected_value: newVal,
+          ocr_tokens: []
+        })
+      });
+      const data = await res.json();
+      
+      // Update local result to show the new value immediately
+      const newResult = { ...result };
+      const valIndex = newResult.values.findIndex(v => v.field_id === val.field_id);
+      if (valIndex !== -1) {
+        newResult.values[valIndex].normalized_value = newVal;
+      }
+      setResult(newResult);
+      
+      cancelEditing(val.field_id);
+      setCorrectionSuccess(val.field_id);
+      if (data.confidence_delta) {
+        setConfidenceBoosts({ ...confidenceBoosts, [val.field_id]: data.confidence_delta });
+      }
+      
+      setTimeout(() => {
+        setCorrectionSuccess(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Correction failed:', err);
+      alert('Failed to save correction.');
     }
   };
 
@@ -323,13 +383,63 @@ export const ExtractionResultsView: React.FC = () => {
 
                   {/* Values grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div className="p-2.5 rounded bg-zinc-900/80 border border-zinc-800">
-                      <div className="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">
-                        Clean Normalized Value
+                    <div className="p-2.5 rounded bg-zinc-900/80 border border-zinc-800 flex flex-col relative group">
+                      <div className="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5 flex items-center justify-between">
+                        <span>Clean Normalized Value</span>
+                        {!editingFields[val.field_id] && (
+                          <button
+                            onClick={() => startEditing(val)}
+                            className="text-zinc-600 hover:text-zinc-300 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            Edit
+                          </button>
+                        )}
                       </div>
                       <div className="text-zinc-100 font-semibold text-xs truncate">
-                        {val.normalized_value || <span className="text-zinc-600">null</span>}
+                        {editingFields[val.field_id] ? (
+                          <div className="flex items-center gap-2 mt-1">
+                            <input
+                              type="text"
+                              value={editingFields[val.field_id].value}
+                              onChange={(e) => setEditingFields({ ...editingFields, [val.field_id]: { ...editingFields[val.field_id], value: e.target.value } })}
+                              className="w-full bg-[#121215] border border-zinc-700 rounded px-2 py-1 text-zinc-200 outline-none focus:border-zinc-500"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => saveCorrection(val)}
+                              className="px-2 py-1 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold flex items-center gap-1 shrink-0"
+                            >
+                              ✓ Save
+                            </button>
+                            <button
+                              onClick={() => cancelEditing(val.field_id)}
+                              className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 shrink-0"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          val.normalized_value || <span className="text-zinc-600">null</span>
+                        )}
                       </div>
+                      
+                      {/* Success Toast */}
+                      {correctionSuccess === val.field_id && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute -top-8 right-0 bg-zinc-900 border border-emerald-900 text-emerald-400 text-[10px] px-2 py-1 rounded shadow-lg flex items-center gap-1 z-10"
+                        >
+                          Correction saved — AI learning updated
+                          {confidenceBoosts[val.field_id] && (
+                            <span className="bg-emerald-950 px-1 py-0.5 rounded border border-emerald-800 ml-1">
+                              +{confidenceBoosts[val.field_id]}% confidence boost
+                            </span>
+                          )}
+                        </motion.div>
+                      )}
                     </div>
 
                     <div className="p-2.5 rounded bg-zinc-900/80 border border-zinc-800">

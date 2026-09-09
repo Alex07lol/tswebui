@@ -267,6 +267,56 @@ export const RuleBuilderView: React.FC<RuleBuilderViewProps> = ({ initialAnchor 
   const activeRule = activeField?.rules[0];
 
   // Regex safety preview check
+  // AI Suggest panel state
+  const [showAISuggest, setShowAISuggest] = useState(false);
+  const [aiOCRText, setAiOCRText] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{
+    field_name: string;
+    confidence: number;
+    matched_alias: string;
+    pattern: string | null;
+    example: string;
+    strategy: string;
+  }>>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAIAnalyze = async () => {
+    if (!aiOCRText.trim()) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch('/api/intelligence/suggest-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ocr_text: aiOCRText, top_k: 10 }),
+      });
+      const data = await res.json();
+      setAiSuggestions(data.suggestions || []);
+    } catch (e) {
+      console.error('AI suggest failed:', e);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applyAISuggestion = (s: { field_name: string; pattern: string | null }) => {
+    const activeField = fields[activeFieldIndex];
+    if (!activeField) return;
+    const updated = fields.map((f, i) =>
+      i === activeFieldIndex
+        ? {
+            ...f,
+            name: s.field_name,
+            output_variable: s.field_name,
+            rules: f.rules.map((r, ri) =>
+              ri === 0 && s.pattern ? { ...r, pattern: s.pattern } : r
+            ),
+          }
+        : f
+    );
+    setFields(updated);
+    setShowAISuggest(false);
+  };
+
   const isRegexSafe = (regexStr?: string): boolean => {
     if (!regexStr) return true;
     if (regexStr.includes('(.*).*') || regexStr.includes('(.+)+')) return false;
@@ -311,6 +361,15 @@ export const RuleBuilderView: React.FC<RuleBuilderViewProps> = ({ initialAnchor 
               + New
             </button>
           </div>
+
+          <button
+            onClick={() => setShowAISuggest(true)}
+            className="px-3.5 py-1.5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-xs text-zinc-200 font-mono flex items-center gap-1.5 transition-colors"
+            title="AI-assisted rule suggestions"
+          >
+            <span>✦</span>
+            <span>AI Suggest</span>
+          </button>
 
           <button
             onClick={handleSaveVersion}
@@ -750,6 +809,97 @@ export const RuleBuilderView: React.FC<RuleBuilderViewProps> = ({ initialAnchor 
                 >
                   Create
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ✦ AI Suggest slide-in panel */}
+      <AnimatePresence>
+        {showAISuggest && (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            {/* backdrop */}
+            <motion.div
+              className="absolute inset-0 bg-zinc-950/70"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAISuggest(false)}
+            />
+            {/* panel */}
+            <motion.div
+              className="relative w-full max-w-md bg-zinc-900 border-l border-zinc-800 flex flex-col h-full overflow-y-auto"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            >
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                <div>
+                  <p className="text-sm font-semibold text-white font-sans">✦ AI Rule Suggestions</p>
+                  <p className="text-xs text-zinc-500 font-mono mt-0.5">Paste OCR text — get field candidates instantly</p>
+                </div>
+                <button
+                  onClick={() => setShowAISuggest(false)}
+                  className="text-zinc-500 hover:text-white transition-colors text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* OCR text input */}
+              <div className="px-5 py-4 space-y-3 border-b border-zinc-800">
+                <textarea
+                  value={aiOCRText}
+                  onChange={(e) => setAiOCRText(e.target.value)}
+                  placeholder="Paste raw OCR text here…"
+                  rows={6}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-xs font-mono text-zinc-200 outline-none focus:border-zinc-600 resize-none"
+                />
+                <button
+                  onClick={handleAIAnalyze}
+                  disabled={aiLoading || !aiOCRText.trim()}
+                  className="w-full px-4 py-2 rounded bg-zinc-100 hover:bg-white disabled:opacity-40 text-zinc-950 text-xs font-semibold transition-colors"
+                >
+                  {aiLoading ? 'Analyzing…' : 'Analyze'}
+                </button>
+              </div>
+
+              {/* Suggestion cards */}
+              <div className="flex-1 px-5 py-4 space-y-3">
+                {aiSuggestions.length === 0 && !aiLoading && (
+                  <p className="text-xs text-zinc-600 font-mono text-center pt-8">
+                    No suggestions yet — paste OCR text above and click Analyze.
+                  </p>
+                )}
+                {aiSuggestions.map((s, i) => (
+                  <motion.button
+                    key={s.field_name}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04, type: 'spring', stiffness: 400, damping: 30 }}
+                    onClick={() => applyAISuggestion(s)}
+                    className="w-full text-left bg-zinc-950 border border-zinc-800 hover:border-zinc-600 rounded-lg px-4 py-3 space-y-2 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white font-mono">{s.field_name}</span>
+                      <span className="text-xs text-zinc-500 font-mono">{Math.round(s.confidence * 100)}%</span>
+                    </div>
+                    {/* confidence bar */}
+                    <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden" role="progressbar" aria-valuenow={Math.round(s.confidence * 100)} aria-valuemin={0} aria-valuemax={100}>
+                      <div className="h-1 bg-zinc-300 rounded-full" style={{ width: `${Math.round(s.confidence * 100)}%` }} />
+                    </div>
+                    {s.matched_alias && (
+                      <p className="text-xs text-zinc-500 font-mono">alias: <span className="text-zinc-300">{s.matched_alias}</span></p>
+                    )}
+                    {s.pattern && (
+                      <p className="text-xs text-zinc-600 font-mono truncate">pattern: <span className="text-emerald-400">{s.pattern}</span></p>
+                    )}
+                    <p className="text-xs text-zinc-600 font-mono">e.g. <span className="text-zinc-400">{s.example}</span> · {s.strategy}</p>
+                  </motion.button>
+                ))}
               </div>
             </motion.div>
           </div>

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import create_all_tables
 from app.core.logging import configure_logging, get_logger
 from app.providers.ocr.registry import list_providers, register_provider
+from app.providers.ocr.mock_vision import MockVisionProvider
 from app.services.ocr.tesseract import TesseractProvider
 
 log = get_logger(__name__)
@@ -20,6 +21,8 @@ def _register_providers() -> None:
     """Register all built-in providers."""
     if "tesseract" not in list_providers():
         register_provider(TesseractProvider())
+    if "mock_vision" not in list_providers():
+        register_provider(MockVisionProvider())
 
 
 @asynccontextmanager
@@ -66,7 +69,10 @@ def create_app() -> FastAPI:
     )
 
     # Attach all API routers
-    from app.api import audit, auth, configurations, discovery, documents, extraction, health, ocr, results, tests
+    from app.api import (
+        audit, auth, configurations, corrections, discovery, documents,
+        extraction, health, intelligence, ocr, results, tests, training,
+    )
 
     app.include_router(health.router, prefix="/api", tags=["health"])
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -78,6 +84,10 @@ def create_app() -> FastAPI:
     app.include_router(discovery.router, prefix="/api", tags=["discovery"])
     app.include_router(tests.router, prefix="/api/tests", tags=["tests"])
     app.include_router(results.router, prefix="/api/results", tags=["results"])
+    # Phase 8 — Advanced Intelligence
+    app.include_router(corrections.router, prefix="/api", tags=["active-learning"])
+    app.include_router(intelligence.router, prefix="/api", tags=["intelligence"])
+    app.include_router(training.router, prefix="/api", tags=["training"])
 
     return app
 
