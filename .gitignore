@@ -31,3 +31,7 @@ storage/
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Runtime / Daemons
+.run/
+logs/
