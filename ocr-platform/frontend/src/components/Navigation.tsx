@@ -1,24 +1,32 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard,
+  Home,
+  Scan,
+  Sparkles,
+  Layers,
+  FileCheck2,
+  ChevronDown,
+  ChevronUp,
   ScanEye,
   Sliders,
   BrainCircuit,
-  FileSpreadsheet,
   CheckCircle,
-  History,
   Activity,
+  Wrench,
 } from 'lucide-react';
 
 export type TabType =
-  | 'overview'
-  | 'playground'
-  | 'rules'
-  | 'trainer'
+  | 'home'
+  | 'scan'
+  | 'teach'
+  | 'setups'
   | 'results'
-  | 'regression'
-  | 'audit';
+  | 'advanced_inspector'
+  | 'advanced_rules'
+  | 'advanced_patterns'
+  | 'advanced_regression'
+  | 'advanced_activity';
 
 interface NavigationProps {
   activeTab: TabType;
@@ -26,14 +34,20 @@ interface NavigationProps {
   apiHealthy?: boolean;
 }
 
-const TABS: Array<{ id: TabType; label: string; icon: React.FC<{ className?: string }> }> = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'playground', label: 'OCR Playground', icon: ScanEye },
-  { id: 'rules', label: 'Rule Builder', icon: Sliders },
-  { id: 'trainer', label: 'Pattern Trainer', icon: BrainCircuit },
-  { id: 'results', label: 'Results & Export', icon: FileSpreadsheet },
-  { id: 'regression', label: 'Regression Suite', icon: CheckCircle },
-  { id: 'audit', label: 'Audit Logs', icon: History },
+const PRIMARY_TABS: Array<{ id: TabType; label: string; icon: React.FC<{ className?: string }> }> = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'scan', label: 'Scan Documents', icon: Scan },
+  { id: 'teach', label: 'Teach From Examples', icon: Sparkles },
+  { id: 'setups', label: 'My Setups', icon: Layers },
+  { id: 'results', label: 'Results', icon: FileCheck2 },
+];
+
+const ADVANCED_TOOLS: Array<{ id: TabType; label: string; icon: React.FC<{ className?: string }> }> = [
+  { id: 'advanced_inspector', label: 'OCR Inspector', icon: ScanEye },
+  { id: 'advanced_rules', label: 'Advanced Rule Editor', icon: Sliders },
+  { id: 'advanced_patterns', label: 'Pattern Analysis', icon: BrainCircuit },
+  { id: 'advanced_regression', label: 'Test & Regression', icon: CheckCircle },
+  { id: 'advanced_activity', label: 'Activity & System', icon: Activity },
 ];
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -41,35 +55,40 @@ export const Navigation: React.FC<NavigationProps> = ({
   onTabChange,
   apiHealthy = true,
 }) => {
+  const [showAdvancedMenu, setShowAdvancedMenu] = useState(false);
+  const isAdvancedActive = activeTab.startsWith('advanced_');
+
   return (
     <header className="bg-[#09090b] border-b border-zinc-800 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
         {/* Brand */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-zinc-100 flex items-center justify-center text-zinc-950 font-mono font-bold text-sm select-none">
+          <button
+            onClick={() => onTabChange('home')}
+            className="flex items-center gap-2 text-left select-none"
+          >
+            <div className="w-7 h-7 rounded bg-zinc-100 flex items-center justify-center text-zinc-950 font-mono font-bold text-sm">
               ts
             </div>
             <span className="font-semibold text-sm tracking-tight text-white font-sans">
               tswebui
             </span>
-          </div>
-
-          <span className="hidden sm:inline-block font-mono text-[10px] text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900">
-            Tesseract OCR
-          </span>
+          </button>
         </div>
 
-        {/* Tab Items */}
+        {/* Primary Tab Navigation */}
         <nav className="flex items-center space-x-1 overflow-x-auto no-scrollbar py-1">
-          {TABS.map((tab) => {
+          {PRIMARY_TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
 
             return (
               <button
                 key={tab.id}
-                onClick={() => onTabChange(tab.id)}
+                onClick={() => {
+                  setShowAdvancedMenu(false);
+                  onTabChange(tab.id);
+                }}
                 className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors select-none ${
                   isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
                 }`}
@@ -77,7 +96,6 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
 
-                {/* Minimal Active Indicator */}
                 {isActive && (
                   <motion.div
                     layoutId="activeTabIndicator"
@@ -88,21 +106,73 @@ export const Navigation: React.FC<NavigationProps> = ({
               </button>
             );
           })}
+
+          {/* Advanced Tools Dropdown Trigger */}
+          <div className="relative">
+            <button
+              onClick={() => setShowAdvancedMenu(!showAdvancedMenu)}
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors select-none ${
+                isAdvancedActive
+                  ? 'text-zinc-100 bg-zinc-800/80 border border-zinc-700'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              <span>Advanced Tools</span>
+              {showAdvancedMenu ? (
+                <ChevronUp className="w-3 h-3 text-zinc-400" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-zinc-400" />
+              )}
+            </button>
+
+            <AnimatePresence>
+              {showAdvancedMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl p-1.5 z-50 text-xs font-mono space-y-0.5"
+                >
+                  <div className="px-2.5 py-1 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+                    Technical Tools
+                  </div>
+                  {ADVANCED_TOOLS.map((tool) => {
+                    const ToolIcon = tool.icon;
+                    const isSelected = activeTab === tool.id;
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => {
+                          setShowAdvancedMenu(false);
+                          onTabChange(tool.id);
+                        }}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-left transition-colors ${
+                          isSelected
+                            ? 'bg-zinc-800 text-white font-semibold'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <ToolIcon className="w-3.5 h-3.5 shrink-0" />
+                        <span>{tool.label}</span>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </nav>
 
         {/* Backend Status indicator */}
-        <div className="hidden md:flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400 bg-zinc-900/80 px-2 py-1 rounded border border-zinc-800">
-            <Activity className="w-3 h-3 text-zinc-400" />
-            <span>API:</span>
+        <div className="hidden lg:flex items-center gap-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400 bg-zinc-900/80 px-2.5 py-1 rounded border border-zinc-800">
             <span
               className={`inline-block w-1.5 h-1.5 rounded-full ${
                 apiHealthy ? 'bg-emerald-400' : 'bg-rose-500'
               }`}
             />
-            <span className={apiHealthy ? 'text-zinc-300' : 'text-rose-400'}>
-              {apiHealthy ? ':8000' : 'offline'}
-            </span>
+            <span>OCR Engine: Online</span>
           </div>
         </div>
       </div>

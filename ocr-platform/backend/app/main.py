@@ -70,8 +70,9 @@ def create_app() -> FastAPI:
 
     # Attach all API routers
     from app.api import (
-        audit, auth, configurations, corrections, discovery, documents,
-        extraction, health, intelligence, ocr, results, tests, training,
+        ambiguity, audit, auth, configurations, corrections, discovery, documents,
+        extraction, health, intelligence, ocr, pattern_parser_api, results,
+        setup_fields, setups, teach, tests, training,
     )
 
     app.include_router(health.router, prefix="/api", tags=["health"])
@@ -88,6 +89,12 @@ def create_app() -> FastAPI:
     app.include_router(corrections.router, prefix="/api", tags=["active-learning"])
     app.include_router(intelligence.router, prefix="/api", tags=["intelligence"])
     app.include_router(training.router, prefix="/api", tags=["training"])
+    # UX Refactor — Consumer-facing Setups & Adapters
+    app.include_router(setups.router, prefix="/api", tags=["setups"])
+    app.include_router(setup_fields.router, prefix="/api", tags=["setup-fields"])
+    app.include_router(ambiguity.router, prefix="/api", tags=["ambiguity"])
+    app.include_router(teach.router, prefix="/api", tags=["teach"])
+    app.include_router(pattern_parser_api.router, prefix="/api", tags=["pattern-parser"])
 
     return app
 

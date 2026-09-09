@@ -170,7 +170,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate, onSelect
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <motion.div
             whileHover={{ y: -2 }}
-            onClick={() => onNavigate('playground')}
+            onClick={() => onNavigate('advanced_inspector')}
             className="p-4 bg-[#0e0e11] border border-zinc-800 rounded-lg cursor-pointer hover:border-zinc-700 transition-colors group"
           >
             <div className="flex items-center justify-between">
@@ -187,7 +187,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate, onSelect
 
           <motion.div
             whileHover={{ y: -2 }}
-            onClick={() => onNavigate('rules')}
+            onClick={() => onNavigate('advanced_rules')}
             className="p-4 bg-[#0e0e11] border border-zinc-800 rounded-lg cursor-pointer hover:border-zinc-700 transition-colors group"
           >
             <div className="flex items-center justify-between">
@@ -204,7 +204,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate, onSelect
 
           <motion.div
             whileHover={{ y: -2 }}
-            onClick={() => onNavigate('trainer')}
+            onClick={() => onNavigate('advanced_patterns')}
             className="p-4 bg-[#0e0e11] border border-zinc-800 rounded-lg cursor-pointer hover:border-zinc-700 transition-colors group"
           >
             <div className="flex items-center justify-between">
@@ -246,7 +246,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate, onSelect
             <h3 className="text-sm font-semibold text-zinc-100 font-sans">Recent Ingested Files</h3>
           </div>
           <button
-            onClick={() => onNavigate('playground')}
+            onClick={() => onNavigate('advanced_inspector')}
             className="text-xs text-zinc-400 hover:text-white font-mono flex items-center gap-1 transition-colors"
           >
             View all ({docs.length}) &rarr;
@@ -255,7 +255,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate, onSelect
 
         {docs.length === 0 ? (
           <div className="p-8 text-center text-zinc-400 text-xs font-mono">
-            No documents uploaded yet. Switch to OCR Playground or drop a file above.
+            No documents uploaded yet. Switch to OCR Inspector or drop a file above.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -294,7 +294,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate, onSelect
                       <button
                         onClick={() => {
                           onSelectDocument?.(d);
-                          onNavigate('playground');
+                          onNavigate('advanced_inspector');
                         }}
                         className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs transition-colors font-sans"
                       >

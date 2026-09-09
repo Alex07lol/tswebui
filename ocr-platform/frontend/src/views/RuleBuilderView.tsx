@@ -329,11 +329,15 @@ export const RuleBuilderView: React.FC<RuleBuilderViewProps> = ({ initialAnchor 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-zinc-100 font-sans">
-            Visual Extraction Rule Builder
+            Advanced Rule Editor
           </h2>
           <p className="text-xs text-zinc-400 font-mono mt-0.5">
-            Configure declarative anchor labels, search geometries, patterns, and run live verification.
+            Full declarative control: strategy, anchor matching, search direction, scope, region, regex, and validation.
           </p>
+          <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Compatible with Simple Setups</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

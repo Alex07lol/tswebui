@@ -143,10 +143,10 @@ export const OCRPlaygroundView: React.FC<OCRPlaygroundViewProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-zinc-100 font-sans">
-            OCR Playground & Document Inspector
+            Scan & Inspect (OCR Inspector)
           </h2>
           <p className="text-xs text-zinc-400 font-mono mt-0.5">
-            Ingest documents, execute Tesseract OCR, and inspect word coordinates & confidence.
+            Inspect raw recognized words, coordinates, confidence, and test sample values.
           </p>
         </div>
 
@@ -447,15 +447,28 @@ export const OCRPlaygroundView: React.FC<OCRPlaygroundViewProps> = ({
                             <td className="px-3 py-2 text-zinc-400">{w.line_number}</td>
                             <td className="px-3 py-2 text-right">
                               {onSendToRuleBuilder && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSendToRuleBuilder(w.text);
-                                  }}
-                                  className="text-[11px] font-sans text-zinc-300 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700"
-                                >
-                                  Use as Anchor
-                                </button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSendToRuleBuilder(w.text);
+                                    }}
+                                    className="text-[11px] font-mono text-zinc-200 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700"
+                                    title="Send this text as a sample example"
+                                  >
+                                    Use as Example
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSendToRuleBuilder(w.text);
+                                    }}
+                                    className="text-[11px] font-mono text-zinc-400 hover:text-white px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800"
+                                    title="Send this text as a label anchor"
+                                  >
+                                    Anchor
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
