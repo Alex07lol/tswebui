@@ -17,6 +17,9 @@ export interface SetupItem {
   fields?: FieldItem[];
 }
 
+export type SetupSummary = SetupItem;
+export type SetupDetail = SetupItem;
+
 export interface CandidateItem {
   value: string;
   context_before: string;
@@ -158,3 +161,7 @@ export const setupApi = {
     return res.json();
   },
 };
+
+export const listSetups = () => setupApi.listSetups();
+export const getSetup = (id: string) => setupApi.getSetup(id);
+

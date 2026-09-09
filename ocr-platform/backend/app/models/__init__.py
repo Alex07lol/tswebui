@@ -22,9 +22,17 @@ from app.models.extraction import (
     ExtractionResult,
     ExtractedValue,
 )
+from app.models.locator import ExtractionLocator, LocatorExample, SearchIndexMetadata
 from app.models.ocr import OCRJob, OCRPage, OCRResult, OCRWord
 from app.models.test import TestCase, TestRun, TestSuite
 from app.models.user import User
+from app.models.website import (
+    DocumentVisibility,
+    Website,
+    WebsiteCollection,
+    WebsitePage,
+    WebsiteVersion,
+)
 
 __all__ = [
     "AuditLog",
@@ -36,19 +44,27 @@ __all__ = [
     "DocumentCluster",
     "Document",
     "DocumentPage",
+    "DocumentVisibility",
     "ExtractionEvidence",
     "ExtractionField",
     "ExtractionJob",
+    "ExtractionLocator",
     "ExtractionResult",
     "ExtractionRule",
     "ExtractedValue",
+    "LocatorExample",
     "OCRJob",
     "OCRPage",
     "OCRResult",
     "OCRWord",
     "PatternProposal",
+    "SearchIndexMetadata",
     "TestCase",
     "TestRun",
     "TestSuite",
     "User",
+    "Website",
+    "WebsiteCollection",
+    "WebsitePage",
+    "WebsiteVersion",
 ]

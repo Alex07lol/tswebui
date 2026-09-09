@@ -13,6 +13,8 @@ import { RuleBuilderView } from './views/RuleBuilderView';
 import { PatternTrainerView } from './views/PatternTrainerView';
 import { RegressionSuiteView } from './views/RegressionSuiteView';
 import { ActivityView } from './views/ActivityView';
+import { WebsiteBuilderView } from './views/WebsiteBuilderView';
+import { PDFFieldMapperView } from './views/PDFFieldMapperView';
 import { api, DocumentItem } from './lib/api';
 import { SetupItem } from './lib/setupApi';
 
@@ -112,6 +114,10 @@ export const App: React.FC = () => {
               />
             )}
 
+            {activeTab === 'teach_pdf' && (
+              <PDFFieldMapperView />
+            )}
+
             {activeTab === 'setups' && (
               <MySetupsView
                 onCreateNew={() => setActiveTab('create_setup')}
@@ -119,6 +125,10 @@ export const App: React.FC = () => {
                 onEditSetup={handleOpenSetupDetail}
                 onViewResults={handleViewResults}
               />
+            )}
+
+            {activeTab === 'website_builder' && (
+              <WebsiteBuilderView />
             )}
 
             {activeTab === 'create_setup' && (

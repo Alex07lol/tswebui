@@ -14,13 +14,17 @@ import {
   CheckCircle,
   Activity,
   Wrench,
+  MousePointerClick,
+  Globe,
 } from 'lucide-react';
 
 export type TabType =
   | 'home'
   | 'scan'
   | 'teach'
+  | 'teach_pdf'
   | 'setups'
+  | 'website_builder'
   | 'results'
   | 'advanced_inspector'
   | 'advanced_rules'
@@ -38,7 +42,9 @@ const PRIMARY_TABS: Array<{ id: TabType; label: string; icon: React.FC<{ classNa
   { id: 'home', label: 'Home', icon: Home },
   { id: 'scan', label: 'Scan Documents', icon: Scan },
   { id: 'teach', label: 'Teach From Examples', icon: Sparkles },
+  { id: 'teach_pdf', label: 'Teach From PDF', icon: MousePointerClick },
   { id: 'setups', label: 'My Setups', icon: Layers },
+  { id: 'website_builder', label: 'Website Builder', icon: Globe },
   { id: 'results', label: 'Results', icon: FileCheck2 },
 ];
 

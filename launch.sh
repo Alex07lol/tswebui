@@ -4,6 +4,10 @@
 #  Supports:
 #    - Demo Mode:   Interactive foreground execution with live logs & clean Ctrl+C
 #    - Deploy Mode: Daemon/background lifecycle (start, stop, restart, status, logs)
+#  Services:
+#    1. Backend API & Engine:        FastAPI (:8000)
+#    2. Admin & Field Mapper UI:     Vite (:5173)
+#    3. Public Document Portal:      Vite (:5174)
 # ==============================================================================
 set -e
 
@@ -49,18 +53,23 @@ fi
 
 BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
+PUBLIC_SITE_DIR="$PROJECT_ROOT/public-site"
 RUN_DIR="$SCRIPT_DIR/.run"
 LOG_DIR="$SCRIPT_DIR/logs"
 
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
+PUBLIC_SITE_PID_FILE="$RUN_DIR/public-site.pid"
+
 BACKEND_LOG="$LOG_DIR/backend.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
+PUBLIC_SITE_LOG="$LOG_DIR/public-site.log"
 
 # --- Configurable Ports & Host ---
 HOST="${HOST:-0.0.0.0}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+PUBLIC_SITE_PORT="${PUBLIC_SITE_PORT:-5174}"
 
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$BACKEND_DIR/storage"
 
@@ -73,10 +82,6 @@ check_prerequisites() {
     fi
     if ! command -v node >/dev/null 2>&1; then
         error "Node.js is required but not installed."
-        missing=1
-    fi
-    if ! command -v npm >/dev/null 2>&1; then
-        error "npm is required but not installed."
         missing=1
     fi
     if [ "$missing" -eq 1 ]; then
@@ -124,12 +129,23 @@ asyncio.run(check())
     fi
 }
 
-# --- Frontend Build Check ---
-ensure_frontend_built() {
+# --- Frontends Build Check ---
+ensure_frontends_built() {
+    local vite_bin="$PROJECT_ROOT/node_modules/vite/bin/vite.js"
+    if [ ! -f "$vite_bin" ]; then
+        vite_bin="$FRONTEND_DIR/node_modules/vite/bin/vite.js"
+    fi
+
     if [ ! -f "$FRONTEND_DIR/dist/index.html" ]; then
-        info "Frontend production build not found. Building now (npm run build)..."
-        (cd "$FRONTEND_DIR" && npm run build)
-        success "Frontend built successfully."
+        info "Admin frontend build not found. Building now..."
+        (cd "$FRONTEND_DIR" && node "$vite_bin" build)
+        success "Admin frontend built successfully."
+    fi
+
+    if [ -d "$PUBLIC_SITE_DIR" ] && [ ! -f "$PUBLIC_SITE_DIR/dist/index.html" ]; then
+        info "Public site build not found. Building now..."
+        (cd "$PUBLIC_SITE_DIR" && node "$vite_bin" build)
+        success "Public site built successfully."
     fi
 }
 
@@ -148,6 +164,7 @@ get_backend_pid() {
             return 0
         fi
     fi
+    pgrep -f "uvicorn app.main:app.*$BACKEND_PORT" 2>/dev/null | head -n 1 || \
     pgrep -f "uvicorn app.main:app" 2>/dev/null | head -n 1 || true
 }
 
@@ -160,7 +177,20 @@ get_frontend_pid() {
             return 0
         fi
     fi
+    pgrep -f "vite.*preview.*$FRONTEND_PORT" 2>/dev/null | head -n 1 || \
     pgrep -f "vite.*preview" 2>/dev/null | head -n 1 || true
+}
+
+get_public_site_pid() {
+    if [ -f "$PUBLIC_SITE_PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PUBLIC_SITE_PID_FILE" 2>/dev/null || true)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+    pgrep -f "vite.*preview.*$PUBLIC_SITE_PORT" 2>/dev/null | head -n 1 || true
 }
 
 # --- Wait For Service ---
@@ -192,29 +222,33 @@ run_demo() {
     check_prerequisites
     init_database
     seed_data_if_empty
-    ensure_frontend_built
+    ensure_frontends_built
 
-    local existing_b existing_f
+    local vite_bin="$PROJECT_ROOT/node_modules/vite/bin/vite.js"
+    if [ ! -f "$vite_bin" ]; then
+        vite_bin="$FRONTEND_DIR/node_modules/vite/bin/vite.js"
+    fi
+
+    local existing_b existing_f existing_p
     existing_b=$(get_backend_pid)
     existing_f=$(get_frontend_pid)
-    if [ -n "$existing_b" ] || [ -n "$existing_f" ]; then
-        warn "Existing platform processes detected (Backend PID: ${existing_b:-none}, Frontend PID: ${existing_f:-none})."
+    existing_p=$(get_public_site_pid)
+    if [ -n "$existing_b" ] || [ -n "$existing_f" ] || [ -n "$existing_p" ]; then
+        warn "Existing platform processes detected (Backend: ${existing_b:-none}, Admin UI: ${existing_f:-none}, Public Site: ${existing_p:-none})."
         printf "Terminating them to start a clean interactive demo session...\n"
         stop_services
     fi
 
     local DEMO_BACKEND_PID=""
     local DEMO_FRONTEND_PID=""
+    local DEMO_PUBLIC_PID=""
 
     cleanup_demo() {
         echo
         info "Shutting down demo services..."
-        if [ -n "$DEMO_FRONTEND_PID" ]; then
-            kill "$DEMO_FRONTEND_PID" 2>/dev/null || true
-        fi
-        if [ -n "$DEMO_BACKEND_PID" ]; then
-            kill "$DEMO_BACKEND_PID" 2>/dev/null || true
-        fi
+        [ -n "$DEMO_PUBLIC_PID" ] && kill "$DEMO_PUBLIC_PID" 2>/dev/null || true
+        [ -n "$DEMO_FRONTEND_PID" ] && kill "$DEMO_FRONTEND_PID" 2>/dev/null || true
+        [ -n "$DEMO_BACKEND_PID" ] && kill "$DEMO_BACKEND_PID" 2>/dev/null || true
         pkill -P $$ 2>/dev/null || true
         pkill -f "uvicorn app.main:app" 2>/dev/null || true
         pkill -f "vite.*preview" 2>/dev/null || true
@@ -231,37 +265,47 @@ run_demo() {
     ) &
     DEMO_BACKEND_PID=$!
 
-    info "Starting Frontend Preview (Vite) on $HOST:$FRONTEND_PORT..."
+    info "Starting Admin Frontend Preview (Vite) on $HOST:$FRONTEND_PORT..."
     (
         cd "$FRONTEND_DIR"
-        exec node ./node_modules/vite/bin/vite.js preview --host "$HOST" --port "$FRONTEND_PORT"
+        exec node "$vite_bin" preview --host "$HOST" --port "$FRONTEND_PORT"
     ) &
     DEMO_FRONTEND_PID=$!
 
+    if [ -d "$PUBLIC_SITE_DIR" ]; then
+        info "Starting Public Document Portal Preview (Vite) on $HOST:$PUBLIC_SITE_PORT..."
+        (
+            cd "$PUBLIC_SITE_DIR"
+            exec node "$vite_bin" preview --host "$HOST" --port "$PUBLIC_SITE_PORT"
+        ) &
+        DEMO_PUBLIC_PID=$!
+    fi
+
     # Wait for services
     wait_for_service "http://localhost:$BACKEND_PORT/api/health" "Backend API" 25
-    wait_for_service "http://localhost:$FRONTEND_PORT/" "Frontend UI" 25
+    wait_for_service "http://localhost:$FRONTEND_PORT/" "Admin Control Plane" 25
+    [ -n "$DEMO_PUBLIC_PID" ] && wait_for_service "http://localhost:$PUBLIC_SITE_PORT/" "Public Document Portal" 25
 
     # Banner
     printf "\n"
-    printf "${COLOR_BOLD}${COLOR_GREEN}╔══════════════════════════════════════════════════════════════════════╗${COLOR_RESET}\n"
-    printf "${COLOR_BOLD}${COLOR_GREEN}║                    🚀 TSWEBUI OCR PLATFORM IS LIVE!                  ║${COLOR_RESET}\n"
-    printf "${COLOR_BOLD}${COLOR_GREEN}╚══════════════════════════════════════════════════════════════════════╝${COLOR_RESET}\n"
+    printf "${COLOR_BOLD}${COLOR_GREEN}╔════════════════════════════════════════════════════════════════════════════╗${COLOR_RESET}\n"
+    printf "${COLOR_BOLD}${COLOR_GREEN}║               🚀 TSWEBUI DOCUMENT INTELLIGENCE PLATFORM LIVE!             ║${COLOR_RESET}\n"
+    printf "${COLOR_BOLD}${COLOR_GREEN}╚════════════════════════════════════════════════════════════════════════════╝${COLOR_RESET}\n"
     printf "\n"
-    printf "  ${COLOR_BOLD}🌐 Web Application:${COLOR_RESET}     ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$FRONTEND_PORT"
-    printf "  ${COLOR_BOLD}📡 Backend API:${COLOR_RESET}         ${COLOR_CYAN}http://localhost:%s/api${COLOR_RESET}\n" "$BACKEND_PORT"
-    printf "  ${COLOR_BOLD}📖 Interactive Docs:${COLOR_RESET}    ${COLOR_CYAN}http://localhost:%s/docs${COLOR_RESET}\n" "$BACKEND_PORT"
+    printf "  ${COLOR_BOLD}⚙️  Admin Control Plane:${COLOR_RESET}     ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$FRONTEND_PORT"
+    printf "  ${COLOR_BOLD}🌐 Public Document Portal:${COLOR_RESET}   ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$PUBLIC_SITE_PORT"
+    printf "  ${COLOR_BOLD}📡 Shared Backend API:${COLOR_RESET}       ${COLOR_CYAN}http://localhost:%s/api${COLOR_RESET}\n" "$BACKEND_PORT"
+    printf "  ${COLOR_BOLD}📖 OpenAPI / Swagger Docs:${COLOR_RESET}   ${COLOR_CYAN}http://localhost:%s/docs${COLOR_RESET}\n" "$BACKEND_PORT"
     printf "\n"
-    printf "  ${COLOR_BOLD}${COLOR_YELLOW}✨ Try The Primary User Experience:${COLOR_RESET}\n"
-    printf "     1. Open ${COLOR_CYAN}http://localhost:%s${COLOR_RESET} in your web browser\n" "$FRONTEND_PORT"
-    printf "     2. Click ${COLOR_BOLD}\"Create a Setup\"${COLOR_RESET} (e.g. \"Laptop Warranty Documents\")\n"
-    printf "     3. Click ${COLOR_BOLD}\"+ Add Something\"${COLOR_RESET} & type a pattern: ${COLOR_MAGENTA}SN-{YYYY}-{NNNNNN}${COLOR_RESET}\n"
-    printf "     4. Click ${COLOR_BOLD}\"Scan Documents\"${COLOR_RESET} to run OCR and extract structured values\n"
-    printf "     5. Power users: Open ${COLOR_BOLD}\"Advanced Tools\"${COLOR_RESET} in the top navigation bar\n"
+    printf "  ${COLOR_BOLD}${COLOR_YELLOW}✨ Key Features & Workflows:${COLOR_RESET}\n"
+    printf "     1. ${COLOR_BOLD}Teach From PDF:${COLOR_RESET} Open ${COLOR_CYAN}http://localhost:%s${COLOR_RESET} -> Teach From PDF tab to visually map fields\n" "$FRONTEND_PORT"
+    printf "     2. ${COLOR_BOLD}Website Builder:${COLOR_RESET} Create custom document websites & publish collections\n"
+    printf "     3. ${COLOR_BOLD}Ranked Search:${COLOR_RESET} Test 5-tier search & PDF viewer at ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$PUBLIC_SITE_PORT"
+    printf "     4. ${COLOR_BOLD}Security:${COLOR_RESET} Strict boundary between /api/admin/* and /api/public/*\n"
     printf "\n"
     printf "  ${COLOR_DIM}[Press Ctrl+C at any time to stop all services]${COLOR_RESET}\n\n"
 
-    wait "$DEMO_BACKEND_PID" "$DEMO_FRONTEND_PID" 2>/dev/null || true
+    wait "$DEMO_BACKEND_PID" "$DEMO_FRONTEND_PID" ${DEMO_PUBLIC_PID:+"$DEMO_PUBLIC_PID"} 2>/dev/null || true
 }
 
 # ==============================================================================
@@ -271,12 +315,19 @@ start_services() {
     heading "DEPLOYING TSWEBUI OCR PLATFORM (DAEMON MODE)"
     check_prerequisites
     init_database
-    ensure_frontend_built
+    ensure_frontends_built
 
-    local existing_b existing_f
+    local vite_bin="$PROJECT_ROOT/node_modules/vite/bin/vite.js"
+    if [ ! -f "$vite_bin" ]; then
+        vite_bin="$FRONTEND_DIR/node_modules/vite/bin/vite.js"
+    fi
+
+    local existing_b existing_f existing_p
     existing_b=$(get_backend_pid)
     existing_f=$(get_frontend_pid)
+    existing_p=$(get_public_site_pid)
 
+    # 1. Backend
     if [ -n "$existing_b" ]; then
         warn "Backend is already running (PID: $existing_b)."
     else
@@ -301,19 +352,20 @@ start_services() {
         success "Backend started (PID: ${bpid:-unknown}, Log: $BACKEND_LOG)."
     fi
 
+    # 2. Admin Frontend
     if [ -n "$existing_f" ]; then
-        warn "Frontend preview is already running (PID: $existing_f)."
+        warn "Admin frontend preview is already running (PID: $existing_f)."
     else
-        info "Starting frontend preview daemon on $HOST:$FRONTEND_PORT..."
+        info "Starting admin frontend preview on $HOST:$FRONTEND_PORT..."
         (
             cd "$FRONTEND_DIR"
             if command -v setsid >/dev/null 2>&1; then
-                setsid node ./node_modules/vite/bin/vite.js preview \
+                setsid node "$vite_bin" preview \
                     --host "$HOST" \
                     --port "$FRONTEND_PORT" \
                     </dev/null >> "$FRONTEND_LOG" 2>&1 &
             else
-                nohup node ./node_modules/vite/bin/vite.js preview \
+                nohup node "$vite_bin" preview \
                     --host "$HOST" \
                     --port "$FRONTEND_PORT" \
                     </dev/null >> "$FRONTEND_LOG" 2>&1 &
@@ -322,35 +374,70 @@ start_services() {
         )
         local fpid
         fpid=$(cat "$FRONTEND_PID_FILE" 2>/dev/null || true)
-        success "Frontend started (PID: ${fpid:-unknown}, Log: $FRONTEND_LOG)."
+        success "Admin Frontend started (PID: ${fpid:-unknown}, Log: $FRONTEND_LOG)."
+    fi
+
+    # 3. Public Site
+    if [ -d "$PUBLIC_SITE_DIR" ]; then
+        if [ -n "$existing_p" ]; then
+            warn "Public site preview is already running (PID: $existing_p)."
+        else
+            info "Starting public site preview on $HOST:$PUBLIC_SITE_PORT..."
+            (
+                cd "$PUBLIC_SITE_DIR"
+                if command -v setsid >/dev/null 2>&1; then
+                    setsid node "$vite_bin" preview \
+                        --host "$HOST" \
+                        --port "$PUBLIC_SITE_PORT" \
+                        </dev/null >> "$PUBLIC_SITE_LOG" 2>&1 &
+                else
+                    nohup node "$vite_bin" preview \
+                        --host "$HOST" \
+                        --port "$PUBLIC_SITE_PORT" \
+                        </dev/null >> "$PUBLIC_SITE_LOG" 2>&1 &
+                fi
+                echo $! > "$PUBLIC_SITE_PID_FILE"
+            )
+            local ppid
+            ppid=$(cat "$PUBLIC_SITE_PID_FILE" 2>/dev/null || true)
+            success "Public Site started (PID: ${ppid:-unknown}, Log: $PUBLIC_SITE_LOG)."
+        fi
     fi
 
     wait_for_service "http://localhost:$BACKEND_PORT/api/health" "Backend API" 25 || true
-    wait_for_service "http://localhost:$FRONTEND_PORT/" "Frontend UI" 25 || true
+    wait_for_service "http://localhost:$FRONTEND_PORT/" "Admin Frontend" 25 || true
+    [ -d "$PUBLIC_SITE_DIR" ] && wait_for_service "http://localhost:$PUBLIC_SITE_PORT/" "Public Site" 25 || true
 
     printf "\n"
     success "TSWEBUI successfully deployed in background!"
-    printf "  • Frontend:  ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$FRONTEND_PORT"
-    printf "  • Backend:   ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$BACKEND_PORT"
-    printf "  • Logs:      ${COLOR_DIM}%s${COLOR_RESET}\n" "$LOG_DIR"
-    printf "  • Commands:  bash launch.sh status | bash launch.sh logs | bash launch.sh stop\n\n"
+    printf "  • Admin Control Plane:   ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$FRONTEND_PORT"
+    printf "  • Public Document Site:  ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$PUBLIC_SITE_PORT"
+    printf "  • Backend API:           ${COLOR_CYAN}http://localhost:%s${COLOR_RESET}\n" "$BACKEND_PORT"
+    printf "  • Logs:                  ${COLOR_DIM}%s${COLOR_RESET}\n" "$LOG_DIR"
+    printf "  • Commands: bash launch.sh status | bash launch.sh logs | bash launch.sh stop\n\n"
 }
 
 stop_services() {
     heading "STOPPING TSWEBUI SERVICES"
 
-    local bpid fpid
+    local bpid fpid ppid
     bpid=$(get_backend_pid)
     fpid=$(get_frontend_pid)
+    ppid=$(get_public_site_pid)
 
-    if [ -z "$bpid" ] && [ -z "$fpid" ]; then
+    if [ -z "$bpid" ] && [ -z "$fpid" ] && [ -z "$ppid" ]; then
         info "No active TSWEBUI services found."
-        rm -f "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE"
+        rm -f "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE" "$PUBLIC_SITE_PID_FILE"
         return 0
     fi
 
+    if [ -n "$ppid" ]; then
+        info "Stopping Public Site (PID: $ppid)..."
+        kill "$ppid" 2>/dev/null || true
+    fi
+
     if [ -n "$fpid" ]; then
-        info "Stopping Frontend (PID: $fpid)..."
+        info "Stopping Admin Frontend (PID: $fpid)..."
         kill "$fpid" 2>/dev/null || true
     fi
 
@@ -365,7 +452,7 @@ stop_services() {
     pkill -f "uvicorn app.main:app" 2>/dev/null || true
     pkill -f "vite.*preview" 2>/dev/null || true
 
-    rm -f "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE"
+    rm -f "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE" "$PUBLIC_SITE_PID_FILE"
     success "All TSWEBUI services stopped."
 }
 
@@ -379,9 +466,10 @@ restart_services() {
 show_status() {
     heading "TSWEBUI SERVICE STATUS"
 
-    local bpid fpid b_status f_status
+    local bpid fpid ppid b_status f_status p_status
     bpid=$(get_backend_pid)
     fpid=$(get_frontend_pid)
+    ppid=$(get_public_site_pid)
 
     if [ -n "$bpid" ] && is_pid_alive "$bpid"; then
         b_status="${COLOR_GREEN}RUNNING${COLOR_RESET} (PID: $bpid)"
@@ -395,11 +483,18 @@ show_status() {
         f_status="${COLOR_RED}STOPPED${COLOR_RESET}"
     fi
 
-    printf "  • Backend Service:  %b\n" "$b_status"
-    printf "  • Frontend Service: %b\n" "$f_status"
+    if [ -n "$ppid" ] && is_pid_alive "$ppid"; then
+        p_status="${COLOR_GREEN}RUNNING${COLOR_RESET} (PID: $ppid)"
+    else
+        p_status="${COLOR_RED}STOPPED${COLOR_RESET}"
+    fi
+
+    printf "  • Backend API (:8000):        %b\n" "$b_status"
+    printf "  • Admin Control Plane (:5173):%b\n" "$f_status"
+    printf "  • Public Site Portal (:5174): %b\n" "$p_status"
     printf "\n"
 
-    info "Testing API Health Endpoint (http://localhost:$BACKEND_PORT/api/health)..."
+    info "Testing Backend API (http://localhost:$BACKEND_PORT/api/health)..."
     local health_response
     health_response=$(curl -s -m 2 "http://localhost:$BACKEND_PORT/api/health" 2>/dev/null || echo "")
     if [ -n "$health_response" ]; then
@@ -408,13 +503,24 @@ show_status() {
         warn "API Endpoint not responding."
     fi
 
-    info "Testing Frontend Endpoint (http://localhost:$FRONTEND_PORT/)..."
+    info "Testing Admin Frontend (http://localhost:$FRONTEND_PORT/)..."
     local fe_response
     fe_response=$(curl -s -m 2 -I "http://localhost:$FRONTEND_PORT/" 2>/dev/null | head -n 1 || echo "")
     if [ -n "$fe_response" ]; then
-        success "Frontend Responsive: $fe_response"
+        success "Admin Frontend Responsive: $fe_response"
     else
-        warn "Frontend Endpoint not responding."
+        warn "Admin Frontend not responding."
+    fi
+
+    if [ -d "$PUBLIC_SITE_DIR" ]; then
+        info "Testing Public Site (http://localhost:$PUBLIC_SITE_PORT/)..."
+        local ps_response
+        ps_response=$(curl -s -m 2 -I "http://localhost:$PUBLIC_SITE_PORT/" 2>/dev/null | head -n 1 || echo "")
+        if [ -n "$ps_response" ]; then
+            success "Public Site Responsive: $ps_response"
+        else
+            warn "Public Site not responding."
+        fi
     fi
     echo
 }
@@ -426,26 +532,43 @@ show_logs() {
             info "Tailing backend logs ($BACKEND_LOG)..."
             tail -n 50 -f "$BACKEND_LOG"
             ;;
-        frontend)
-            info "Tailing frontend logs ($FRONTEND_LOG)..."
+        frontend|admin)
+            info "Tailing admin frontend logs ($FRONTEND_LOG)..."
             tail -n 50 -f "$FRONTEND_LOG"
             ;;
+        public|public-site)
+            info "Tailing public site logs ($PUBLIC_SITE_LOG)..."
+            tail -n 50 -f "$PUBLIC_SITE_LOG"
+            ;;
         *)
-            info "Showing last 20 lines of both logs:"
+            info "Showing last 20 lines of all logs:"
             printf "\n${COLOR_BOLD}=== Backend Log ($BACKEND_LOG) ===${COLOR_RESET}\n"
             [ -f "$BACKEND_LOG" ] && tail -n 20 "$BACKEND_LOG" || echo "(no logs yet)"
-            printf "\n${COLOR_BOLD}=== Frontend Log ($FRONTEND_LOG) ===${COLOR_RESET}\n"
+            printf "\n${COLOR_BOLD}=== Admin Frontend Log ($FRONTEND_LOG) ===${COLOR_RESET}\n"
             [ -f "$FRONTEND_LOG" ] && tail -n 20 "$FRONTEND_LOG" || echo "(no logs yet)"
+            printf "\n${COLOR_BOLD}=== Public Site Log ($PUBLIC_SITE_LOG) ===${COLOR_RESET}\n"
+            [ -f "$PUBLIC_SITE_LOG" ] && tail -n 20 "$PUBLIC_SITE_LOG" || echo "(no logs yet)"
             ;;
     esac
 }
 
-build_frontend() {
-    heading "BUILDING FRONTEND ASSETS"
+build_frontends() {
+    heading "BUILDING PRODUCTION FRONTEND ASSETS"
     check_prerequisites
-    cd "$FRONTEND_DIR"
-    npm run build
-    success "Frontend built to $FRONTEND_DIR/dist"
+    local vite_bin="$PROJECT_ROOT/node_modules/vite/bin/vite.js"
+    if [ ! -f "$vite_bin" ]; then
+        vite_bin="$FRONTEND_DIR/node_modules/vite/bin/vite.js"
+    fi
+
+    info "Building Admin Frontend..."
+    (cd "$FRONTEND_DIR" && node "$vite_bin" build)
+    success "Admin Frontend built to $FRONTEND_DIR/dist"
+
+    if [ -d "$PUBLIC_SITE_DIR" ]; then
+        info "Building Public Site..."
+        (cd "$PUBLIC_SITE_DIR" && node "$vite_bin" build)
+        success "Public Site built to $PUBLIC_SITE_DIR/dist"
+    fi
 }
 
 seed_demo_data() {
@@ -472,7 +595,7 @@ show_help() {
     printf "${COLOR_BOLD}Commands:${COLOR_RESET}\n"
     printf "  ${COLOR_GREEN}demo${COLOR_RESET}             Run in interactive foreground Demo Mode (with live banner & clean Ctrl+C)\n"
     printf "  ${COLOR_GREEN}deploy [action]${COLOR_RESET}  Manage production background services:\n"
-    printf "      start        Start background daemon services\n"
+    printf "      start        Start background daemon services (Backend, Admin UI, Public Site)\n"
     printf "      stop         Stop running background services\n"
     printf "      restart      Restart background services\n"
     printf "      status       Show running status and check HTTP health endpoints\n"
@@ -482,38 +605,39 @@ show_help() {
     printf "  ${COLOR_GREEN}restart${COLOR_RESET}          Shorthand for 'deploy restart'\n"
     printf "  ${COLOR_GREEN}status${COLOR_RESET}           Shorthand for 'deploy status'\n"
     printf "  ${COLOR_GREEN}logs${COLOR_RESET}             Shorthand for 'deploy logs'\n"
-    printf "  ${COLOR_GREEN}build${COLOR_RESET}            Build production frontend assets\n"
+    printf "  ${COLOR_GREEN}build${COLOR_RESET}            Build production assets for both Admin UI and Public Site\n"
     printf "  ${COLOR_GREEN}seed${COLOR_RESET}             Seed sample setups, documents, and regression runs\n"
     printf "  ${COLOR_GREEN}test${COLOR_RESET}             Run backend test suite\n"
     printf "  ${COLOR_GREEN}help${COLOR_RESET}             Show this help guide\n\n"
     printf "${COLOR_BOLD}Environment Variables:${COLOR_RESET}\n"
     printf "  HOST             Bind host (default: 0.0.0.0)\n"
     printf "  BACKEND_PORT     FastAPI backend port (default: 8000)\n"
-    printf "  FRONTEND_PORT    Frontend UI port (default: 5173)\n\n"
+    printf "  FRONTEND_PORT    Admin Frontend UI port (default: 5173)\n"
+    printf "  PUBLIC_SITE_PORT Public Document Portal port (default: 5174)\n\n"
     printf "${COLOR_BOLD}Examples:${COLOR_RESET}\n"
     printf "  bash launch.sh demo             # Launch interactive demo\n"
-    printf "  bash launch.sh start            # Start as daemon\n"
-    printf "  bash launch.sh status           # Verify health\n"
-    printf "  bash launch.sh stop             # Stop daemon\n\n"
+    printf "  bash launch.sh start            # Start all 3 daemons\n"
+    printf "  bash launch.sh status           # Verify health across all 3 ports\n"
+    printf "  bash launch.sh stop             # Stop all services\n\n"
 }
 
 interactive_menu() {
     while true; do
         printf "\n"
-        printf "${COLOR_BOLD}${COLOR_BLUE}╔══════════════════════════════════════════════════════════════════╗${COLOR_RESET}\n"
-        printf "${COLOR_BOLD}${COLOR_BLUE}║              TSWEBUI / OCR PLATFORM CONTROL CENTER               ║${COLOR_RESET}\n"
-        printf "${COLOR_BOLD}${COLOR_BLUE}╚══════════════════════════════════════════════════════════════════╝${COLOR_RESET}\n"
+        printf "${COLOR_BOLD}${COLOR_BLUE}╔══════════════════════════════════════════════════════════════════════════╗${COLOR_RESET}\n"
+        printf "${COLOR_BOLD}${COLOR_BLUE}║             TSWEBUI DOCUMENT INTELLIGENCE CONTROL CENTER                ║${COLOR_RESET}\n"
+        printf "${COLOR_BOLD}${COLOR_BLUE}╚══════════════════════════════════════════════════════════════════════════╝${COLOR_RESET}\n"
         printf "  ${COLOR_BOLD}[1]${COLOR_RESET} 🚀 ${COLOR_GREEN}Run Demo Mode${COLOR_RESET}       (Interactive foreground + live banner)\n"
-        printf "  ${COLOR_BOLD}[2]${COLOR_RESET} 🌐 ${COLOR_CYAN}Deploy - Start${COLOR_RESET}      (Run backend + frontend in background)\n"
+        printf "  ${COLOR_BOLD}[2]${COLOR_RESET} 🌐 ${COLOR_CYAN}Deploy - Start${COLOR_RESET}      (Run backend + admin + public in background)\n"
         printf "  ${COLOR_BOLD}[3]${COLOR_RESET} 🛑 ${COLOR_RED}Deploy - Stop${COLOR_RESET}       (Stop background services)\n"
         printf "  ${COLOR_BOLD}[4]${COLOR_RESET} 🔄 ${COLOR_YELLOW}Deploy - Restart${COLOR_RESET}    (Restart background services)\n"
-        printf "  ${COLOR_BOLD}[5]${COLOR_RESET} 📊 Check Status        (View health & running PIDs)\n"
-        printf "  ${COLOR_BOLD}[6]${COLOR_RESET} 📜 View Logs           (Tail backend/frontend logs)\n"
-        printf "  ${COLOR_BOLD}[7]${COLOR_RESET} 📦 Build Frontend      (Compile Vite production bundle)\n"
-        printf "  ${COLOR_BOLD}[8]${COLOR_RESET} 🧪 Run Test Suite      (Verify 83/83 backend tests)\n"
+        printf "  ${COLOR_BOLD}[5]${COLOR_RESET} 📊 Check Status        (View health & running PIDs for all 3)\n"
+        printf "  ${COLOR_BOLD}[6]${COLOR_RESET} 📜 View Logs           (Tail backend/admin/public logs)\n"
+        printf "  ${COLOR_BOLD}[7]${COLOR_RESET} 📦 Build Frontends     (Compile Vite bundles for Admin & Public)\n"
+        printf "  ${COLOR_BOLD}[8]${COLOR_RESET} 🧪 Run Test Suite      (Verify 87/87 backend tests)\n"
         printf "  ${COLOR_BOLD}[9]${COLOR_RESET} 🌱 Seed Demo Data      (Populate sample setups & invoices)\n"
         printf "  ${COLOR_BOLD}[0]${COLOR_RESET} 🚪 Exit\n"
-        printf "${COLOR_BOLD}════════════════════════════════════════════════════════════════════${COLOR_RESET}\n"
+        printf "${COLOR_BOLD}════════════════════════════════════════════════════════════════════════════${COLOR_RESET}\n"
         printf "Select an option [0-9]: "
         read -r opt || opt="0"
         echo
@@ -525,7 +649,7 @@ interactive_menu() {
             4) restart_services ;;
             5) show_status ;;
             6) show_logs ;;
-            7) build_frontend ;;
+            7) build_frontends ;;
             8) run_tests ;;
             9) seed_demo_data ;;
             0|q|Q|exit) info "Goodbye!"; exit 0 ;;
@@ -569,7 +693,7 @@ case "${1:-}" in
         show_logs "${1:-all}"
         ;;
     build)
-        build_frontend
+        build_frontends
         ;;
     seed)
         seed_demo_data

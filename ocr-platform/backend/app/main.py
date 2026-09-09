@@ -96,6 +96,14 @@ def create_app() -> FastAPI:
     app.include_router(teach.router, prefix="/api", tags=["teach"])
     app.include_router(pattern_parser_api.router, prefix="/api", tags=["pattern-parser"])
 
+    # Document Website Platform & Visual PDF Locators
+    from app.api.admin import locators as admin_locators, websites as admin_websites
+    from app.api.public import sites as public_sites
+
+    app.include_router(admin_websites.router, prefix="/api/admin", tags=["admin-websites"])
+    app.include_router(admin_locators.router, prefix="/api/admin", tags=["admin-locators"])
+    app.include_router(public_sites.router, prefix="/api/public", tags=["public-sites"])
+
     return app
 
 

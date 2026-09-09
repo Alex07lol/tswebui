@@ -21,6 +21,8 @@ from app.models.dataset import Dataset, DatasetDocument
 from app.models.discovery import DiscoveryRun, DocumentCluster, PatternProposal
 from app.models.test import TestSuite, TestCase, TestRun
 from app.models.audit import AuditLog
+from app.models.website import Website, WebsiteVersion, WebsitePage, WebsiteCollection, DocumentVisibility
+from app.services.search.indexer import SearchIndexer
 from app.providers.storage.local import LocalStorageProvider
 
 
@@ -78,6 +80,14 @@ async def seed() -> None:
     storage = LocalStorageProvider()
 
     async with AsyncSessionLocal() as session:
+        from sqlalchemy import delete, select
+        # Clean previous demo records for idempotency
+        await session.execute(delete(Website).where(Website.slug == "acme-portal"))
+        await session.execute(delete(Configuration).where(Configuration.slug == "standard_invoice"))
+        await session.execute(delete(Dataset).where(Dataset.name == "Commercial Invoices 2026"))
+        await session.execute(delete(Document).where(Document.filename == "sample_invoice_acme.png"))
+        await session.commit()
+
         print("Generating sample invoice...")
         content = generate_invoice_image()
         doc_id = str(uuid.uuid4())
@@ -456,8 +466,51 @@ async def seed() -> None:
             details_json=json.dumps({"confidence": 0.97, "fields": ["invoice_number", "total_amount"]}),
         ))
 
+        # 8. Seed sample Website & WebsiteVersion
+        website_id = str(uuid.uuid4())
+        version_id = str(uuid.uuid4())
+        website = Website(
+            id=website_id,
+            name="Acme Logistics Portal",
+            slug="acme-portal",
+            description="Public document portal for Acme Logistics invoices, shipping orders, and bills of lading.",
+            setup_id=config.id,
+            status="published",
+            current_version_id=version_id,
+        )
+        session.add(website)
+
+        version = WebsiteVersion(
+            id=version_id,
+            website_id=website_id,
+            version_number=1,
+            status="published",
+            site_title="Acme Logistics Document Portal",
+            tagline="Search, inspect, and verify freight documents and commercial invoices.",
+            theme_json=json.dumps({"color_preset": "engineering_dark", "accent_color": "#3b82f6"}),
+            search_config_json=json.dumps({"searchable_fields": ["title", "invoice_number", "vendor", "date"]}),
+            field_mappings_json=json.dumps({"title": "invoice_number", "drawing_number": "invoice_number", "description": "invoice_date"}),
+            published_at=datetime.now(timezone.utc),
+        )
+        session.add(version)
+
+        collection = WebsiteCollection(
+            id=str(uuid.uuid4()),
+            website_id=website_id,
+            name="Commercial Invoices 2026",
+            slug="commercial-invoices",
+            description="All audited commercial freight and logistics invoices.",
+            display_order=1,
+        )
+        session.add(collection)
+
         await session.commit()
-        print("Demo data seeded successfully!")
+
+        # 9. Index document into search metadata
+        indexer = SearchIndexer(session)
+        await indexer.index_document_for_website(doc.id, website_id, make_public=True)
+
+        print("Demo data seeded successfully with published website and search indexing!")
 
 
 if __name__ == "__main__":
