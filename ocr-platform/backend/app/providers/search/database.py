@@ -68,8 +68,10 @@ class DatabaseSearchProvider:
         page: int = 1,
         page_size: int = 20,
         sort_by: str = "relevance",
+        field_filters: dict[str, Any] | None = None,
     ) -> SearchResult:
         """Query index, calculate 5-tier ranked score, apply filters, and paginate."""
+        filters = field_filters or filters
         # Only select documents that are public for this website
         stmt = (
             select(SearchIndexMetadata)

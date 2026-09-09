@@ -50,7 +50,28 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def create_all_tables() -> None:
-    """Create all tables (used in development/testing). Production uses Alembic."""
+    """Create all tables and ensure schema columns (used in development/testing). Production uses Alembic."""
     import app.models  # noqa: F401 - Ensure all models are registered on Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Migrate new columns on existing SQLite tables safely
+        def _migrate(sync_conn):
+            new_cols = [
+                ("websites", "published_version_id", "VARCHAR(36)"),
+                ("website_versions", "bindings_json", "TEXT"),
+                ("website_versions", "actions_json", "TEXT"),
+                ("website_versions", "conditions_json", "TEXT"),
+                ("website_versions", "computed_fields_json", "TEXT"),
+                ("website_pages", "components_json", "TEXT"),
+            ]
+            for tbl, col, col_type in new_cols:
+                try:
+                    res = sync_conn.exec_driver_sql(f"PRAGMA table_info({tbl})").fetchall()
+                    existing = [r[1] for r in res]
+                    if existing and col not in existing:
+                        sync_conn.exec_driver_sql(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
+
+        await conn.run_sync(_migrate)

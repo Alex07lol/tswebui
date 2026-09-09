@@ -24,6 +24,7 @@ class Website(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         String(50), nullable=False, default="draft"
     )  # draft | preview | published | unpublished | archived
     current_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    published_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -55,6 +56,10 @@ class WebsiteVersion(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     search_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     field_mappings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     document_view_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bindings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conditions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    computed_fields_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     change_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -78,6 +83,7 @@ class WebsitePage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
     layout_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    components_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     version: Mapped[WebsiteVersion] = relationship("WebsiteVersion", back_populates="pages")

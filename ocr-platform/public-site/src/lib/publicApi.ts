@@ -70,6 +70,12 @@ export interface DocumentDetail {
   published_at?: string;
 }
 
+export async function listPublicSites(): Promise<Array<{ id: string; name: string; slug: string; title: string; description?: string }>> {
+  const res = await fetch('/api/public/sites');
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export async function fetchPublicSite(slug: string): Promise<PublicSiteConfig> {
   const res = await fetch(`/api/public/sites/${encodeURIComponent(slug)}`);
   if (!res.ok) {

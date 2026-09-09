@@ -45,14 +45,17 @@ export const PDFFieldMapperView: React.FC = () => {
   // Selection state
   const [selectedWordIndices, setSelectedWordIndices] = useState<number[]>([]);
   const [analysis, setAnalysis] = useState<SelectionAnalysis | null>(null);
+  const [fieldMode, setFieldMode] = useState<'existing' | 'new'>('existing');
   const [selectedFieldId, setSelectedFieldId] = useState<string>('');
   const [customFieldName, setCustomFieldName] = useState<string>('');
+  const [customFieldType, setCustomFieldType] = useState<string>('string');
   const [savingLocator, setSavingLocator] = useState(false);
   const [savedLocatorId, setSavedLocatorId] = useState<string | null>(null);
 
   // Test state
   const [testing, setTesting] = useState(false);
   const [testResults, setTestResults] = useState<any | null>(null);
+  const [mobileView, setMobileView] = useState<'canvas' | 'inspector'>('canvas');
 
   useEffect(() => {
     const init = async () => {
@@ -158,9 +161,12 @@ export const PDFFieldMapperView: React.FC = () => {
 
   const handleSaveLocator = async () => {
     if (!analysis) return;
-    const targetField = selectedFieldId || customFieldName;
-    if (!targetField) {
-      alert('Please select or specify a target field name.');
+    if (fieldMode === 'existing' && !selectedFieldId) {
+      alert('Please select a target field from the setup.');
+      return;
+    }
+    if (fieldMode === 'new' && !customFieldName.trim()) {
+      alert('Please enter a name for the new field.');
       return;
     }
 
@@ -172,18 +178,31 @@ export const PDFFieldMapperView: React.FC = () => {
       const max_x = Math.max(...selectedWords.map((w) => (w.bbox_x || 0) + (w.bbox_width || 20)));
       const max_y = Math.max(...selectedWords.map((w) => (w.bbox_y || 0) + (w.bbox_height || 15)));
 
-      const res = await saveLocator({
-        field_id: targetField,
-        name: `Visual Locator for ${targetField}`,
-        template_label: 'Drawing Title Block',
+      const payload: any = {
+        name: `Visual Locator for ${fieldMode === 'new' ? customFieldName : selectedFieldId}`,
+        template_label: 'Document Block',
         document_id: selectedDocId,
+        setup_id: selectedSetupId || undefined,
         page_number: 1,
         selection_analysis: analysis,
         pixel_bbox: [bx, by, max_x - bx, max_y - by, pageWidth, pageHeight],
-      });
+      };
+
+      if (fieldMode === 'new') {
+        payload.new_field_name = customFieldName.trim();
+        payload.new_field_type = customFieldType;
+      } else {
+        payload.field_id = selectedFieldId;
+      }
+
+      const res = await saveLocator(payload);
 
       setSavedLocatorId(res.id);
-      alert('Visual locator saved and linked to Setup!');
+      if (fieldMode === 'new' && selectedSetupId) {
+        getSetup(selectedSetupId).then(setActiveSetup).catch(console.error);
+        setCustomFieldName('');
+      }
+      alert('Visual locator saved and linked successfully!');
     } catch (err: any) {
       alert(err.message || 'Failed to save locator.');
     } finally {
@@ -256,10 +275,34 @@ export const PDFFieldMapperView: React.FC = () => {
         </div>
       </div>
 
+      {/* Mobile View Switcher */}
+      <div className="lg:hidden flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1 text-xs font-semibold shadow-sm">
+        <button
+          type="button"
+          onClick={() => setMobileView('canvas')}
+          className={`flex-1 py-2 rounded-lg text-center transition-colors flex items-center justify-center space-x-1.5 ${
+            mobileView === 'canvas' ? 'bg-blue-600 text-white shadow-sm font-bold' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <MousePointerClick className="w-3.5 h-3.5" />
+          <span>1. Canvas ({selectedWordIndices.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView('inspector')}
+          className={`flex-1 py-2 rounded-lg text-center transition-colors flex items-center justify-center space-x-1.5 ${
+            mobileView === 'inspector' ? 'bg-blue-600 text-white shadow-sm font-bold' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+          <span>2. Inspector {analysis ? '●' : ''}</span>
+        </button>
+      </div>
+
       {/* Main Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Document Canvas (2 cols) */}
-        <div className="lg:col-span-2 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl flex flex-col">
+        <div className={`lg:col-span-2 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl flex flex-col ${mobileView === 'canvas' ? 'flex' : 'hidden lg:flex'}`}>
           <div className="p-3 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
             <span>
               Click tokens to select phrase ({selectedWordIndices.length} token{selectedWordIndices.length === 1 ? '' : 's'} selected)
@@ -327,7 +370,7 @@ export const PDFFieldMapperView: React.FC = () => {
         </div>
 
         {/* Sidebar Inspector & Tester (1 col) */}
-        <div className="space-y-6">
+        <div className={`space-y-6 ${mobileView === 'inspector' ? 'block' : 'hidden lg:block'}`}>
           {/* Selection Analysis Card */}
           <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-2xl space-y-4 shadow-md">
             <h3 className="text-sm font-bold text-white flex items-center space-x-2">
@@ -377,32 +420,70 @@ export const PDFFieldMapperView: React.FC = () => {
                 )}
 
                 {/* Setup Field Assignment */}
-                <div className="pt-2 border-t border-zinc-800 space-y-2">
-                  <span className="text-zinc-400 font-semibold block text-[11px]">
-                    Assign to Field:
-                  </span>
+                <div className="pt-2 border-t border-zinc-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 font-semibold block text-[11px]">
+                      Target Field:
+                    </span>
+                    <div className="flex bg-zinc-950 p-0.5 rounded border border-zinc-800 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setFieldMode('existing')}
+                        className={`px-2 py-0.5 rounded ${fieldMode === 'existing' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        Existing
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFieldMode('new')}
+                        className={`px-2 py-0.5 rounded ${fieldMode === 'new' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        + Create New
+                      </button>
+                    </div>
+                  </div>
 
-                  {activeSetup && activeSetup.fields && activeSetup.fields.length > 0 ? (
-                    <select
-                      value={selectedFieldId}
-                      onChange={(e) => setSelectedFieldId(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-zinc-100"
-                    >
-                      <option value="">-- Choose Field --</option>
-                      {activeSetup.fields.map((f: any) => (
-                        <option key={f.id || f.field_id} value={f.id || f.field_id}>
-                          {f.display_name} ({f.output_variable || f.field_id})
-                        </option>
-                      ))}
-                    </select>
+                  {fieldMode === 'existing' ? (
+                    activeSetup && activeSetup.fields && activeSetup.fields.length > 0 ? (
+                      <select
+                        value={selectedFieldId}
+                        onChange={(e) => setSelectedFieldId(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-zinc-100"
+                      >
+                        <option value="">-- Choose Field --</option>
+                        {activeSetup.fields.map((f: any) => (
+                          <option key={f.id || f.field_id} value={f.id || f.field_id}>
+                            {f.display_name} ({f.output_variable || f.field_id})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-[11px] text-zinc-500 italic p-2 bg-zinc-950 rounded border border-zinc-800">
+                        No fields in this Setup yet. Switch to "+ Create New" to create one.
+                      </div>
+                    )
                   ) : (
-                    <input
-                      type="text"
-                      value={customFieldName}
-                      onChange={(e) => setCustomFieldName(e.target.value)}
-                      placeholder="e.g. Title, Drawing Number"
-                      className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-zinc-100"
-                    />
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={customFieldName}
+                        onChange={(e) => setCustomFieldName(e.target.value)}
+                        placeholder="e.g. Expiration Date, Serial Number"
+                        className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-zinc-100"
+                      />
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] text-zinc-400 uppercase font-mono">Type:</span>
+                        <select
+                          value={customFieldType}
+                          onChange={(e) => setCustomFieldType(e.target.value)}
+                          className="flex-1 px-2 py-1 bg-zinc-950 border border-zinc-700 rounded text-xs text-zinc-200"
+                        >
+                          <option value="string">String (Text)</option>
+                          <option value="number">Number / Metric</option>
+                          <option value="date">Date</option>
+                        </select>
+                      </div>
+                    </div>
                   )}
 
                   <button
@@ -415,7 +496,7 @@ export const PDFFieldMapperView: React.FC = () => {
                     ) : (
                       <Check className="w-3.5 h-3.5 mr-1" />
                     )}
-                    <span>Save Extraction Locator</span>
+                    <span>{fieldMode === 'new' ? 'Create Field & Save Locator' : 'Save Extraction Locator'}</span>
                   </button>
                 </div>
               </div>

@@ -73,7 +73,27 @@ class SearchIndexer:
                     if extracted_str:
                         drawing_number = extracted_str
 
-        # 4. Upsert DocumentVisibility
+        # 4. Upsert WebsiteDocument and DocumentVisibility
+        from app.models.data import WebsiteDocument
+
+        wd_stmt = select(WebsiteDocument).where(
+            WebsiteDocument.document_id == document_id,
+            WebsiteDocument.website_id == website_id,
+        )
+        wd = (await self.session.execute(wd_stmt)).scalars().first()
+        if not wd:
+            wd = WebsiteDocument(
+                document_id=document_id,
+                website_id=website_id,
+                is_included=True,
+                is_public=make_public,
+                published_at=datetime.now(timezone.utc) if make_public else None,
+            )
+            self.session.add(wd)
+        elif make_public and not wd.is_public:
+            wd.is_public = True
+            wd.published_at = datetime.now(timezone.utc)
+
         vis_stmt = select(DocumentVisibility).where(
             DocumentVisibility.document_id == document_id,
             DocumentVisibility.website_id == website_id,
@@ -93,24 +113,40 @@ class SearchIndexer:
 
         await self.session.commit()
 
-        # 5. Index into search provider
-        await self.provider.index_document(
-            document_id=document_id,
-            website_id=website_id,
-            title=title,
-            drawing_number=drawing_number,
-            full_text=full_text,
-            structured_fields=structured_fields,
-        )
+        # 5. Index into search provider only if public
+        if wd.is_public:
+            await self.provider.index_document(
+                document_id=document_id,
+                website_id=website_id,
+                title=title,
+                drawing_number=drawing_number,
+                full_text=full_text,
+                structured_fields=structured_fields,
+            )
 
-    async def index_all_documents_for_website(self, website_id: str, make_public: bool = True) -> int:
-        """Batch index all ready documents for a website."""
-        stmt = select(Document.id).where(Document.status == "ready")
-        doc_ids = (await self.session.execute(stmt)).scalars().all()
+    async def index_all_documents_for_website(self, website_id: str, make_public: bool = False) -> int:
+        """Batch index only explicitly included and public documents for a website."""
+        from app.models.data import WebsiteDocument
+
+        # Find documents explicitly marked as public members of this website
+        stmt = select(WebsiteDocument.document_id).where(
+            WebsiteDocument.website_id == website_id,
+            WebsiteDocument.is_included == True,
+            WebsiteDocument.is_public == True,
+        )
+        public_doc_ids = (await self.session.execute(stmt)).scalars().all()
+
+        # Check fallback DocumentVisibility for legacy records
+        if not public_doc_ids:
+            legacy_stmt = select(DocumentVisibility.document_id).where(
+                DocumentVisibility.website_id == website_id,
+                DocumentVisibility.is_public == True,
+            )
+            public_doc_ids = (await self.session.execute(legacy_stmt)).scalars().all()
 
         indexed_count = 0
-        for did in doc_ids:
-            await self.index_document_for_website(did, website_id, make_public=make_public)
+        for did in public_doc_ids:
+            await self.index_document_for_website(did, website_id, make_public=True)
             indexed_count += 1
 
         return indexed_count

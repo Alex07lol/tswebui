@@ -22,6 +22,15 @@ from app.models.extraction import (
     ExtractionResult,
     ExtractedValue,
 )
+from app.models.data import (
+    DataField,
+    DataRecord,
+    DataRelation,
+    DataSchema,
+    DataSource,
+    WebsiteDataSource,
+    WebsiteDocument,
+)
 from app.models.locator import ExtractionLocator, LocatorExample, SearchIndexMetadata
 from app.models.ocr import OCRJob, OCRPage, OCRResult, OCRWord
 from app.models.test import TestCase, TestRun, TestSuite
@@ -38,6 +47,11 @@ __all__ = [
     "AuditLog",
     "Configuration",
     "ConfigurationVersion",
+    "DataField",
+    "DataRecord",
+    "DataRelation",
+    "DataSchema",
+    "DataSource",
     "Dataset",
     "DatasetDocument",
     "DiscoveryRun",
@@ -65,6 +79,8 @@ __all__ = [
     "User",
     "Website",
     "WebsiteCollection",
+    "WebsiteDataSource",
+    "WebsiteDocument",
     "WebsitePage",
     "WebsiteVersion",
 ]

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import {
   PublicSiteConfig,
   SearchHit,
+  listPublicSites,
   fetchPublicSite,
   searchPublicSite,
 } from './lib/publicApi';
@@ -12,6 +13,7 @@ import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { DocumentDetailPage } from './pages/DocumentDetailPage';
 import { AboutPage } from './pages/AboutPage';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 export function App() {
   const [slug, setSlug] = useState<string>('');
@@ -24,8 +26,35 @@ export function App() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [recentHits, setRecentHits] = useState<SearchHit[]>([]);
 
+  // Parse path segments to establish initial route
+  const syncRouteFromPath = useCallback((activeSlug: string) => {
+    const pathname = window.location.pathname.replace(/^\/+/, '');
+    const parts = pathname.split('/');
+    
+    // Check if path is e.g. "engineering-drawings/documents/doc-123"
+    // or if slug was passed via search param
+    const pathSlug = parts[0];
+    const subRoute = pathSlug === activeSlug ? parts[1] : parts[0];
+    const subParam = pathSlug === activeSlug ? parts[2] : parts[1];
+
+    if (subRoute === 'documents' && subParam) {
+      setSelectedDocId(subParam);
+      setCurrentTab('document');
+    } else if (subRoute === 'search') {
+      const q = new URLSearchParams(window.location.search).get('q') || '';
+      setSearchQuery(q);
+      setCurrentTab('search');
+    } else if (subRoute === 'collections') {
+      setCurrentTab('collections');
+    } else if (subRoute === 'about') {
+      setCurrentTab('about');
+    } else {
+      setCurrentTab('home');
+      setSelectedDocId(null);
+    }
+  }, []);
+
   useEffect(() => {
-    // 1. Resolve slug from path e.g. /engineering_drawings or ?site=slug
     const urlParams = new URLSearchParams(window.location.search);
     let targetSlug = urlParams.get('site') || window.location.pathname.replace(/^\/+/, '').split('/')[0];
 
@@ -33,15 +62,11 @@ export function App() {
       setLoading(true);
       setError(null);
       try {
-        if (!targetSlug) {
-          // Discover first published site
-          const listRes = await fetch('/api/admin/websites');
-          if (listRes.ok) {
-            const list = await listRes.json();
-            const published = list.find((s: any) => s.status === 'published') || list[0];
-            if (published) {
-              targetSlug = published.slug;
-            }
+        if (!targetSlug || targetSlug === 'index.html') {
+          // Discover published sites via /api/public/sites (Strict Rule C: No /api/admin calls)
+          const publishedSites = await listPublicSites();
+          if (publishedSites.length > 0) {
+            targetSlug = publishedSites[0].slug;
           }
         }
 
@@ -52,6 +77,8 @@ export function App() {
         setSlug(targetSlug);
         const config = await fetchPublicSite(targetSlug);
         setSite(config);
+
+        syncRouteFromPath(targetSlug);
 
         // Load initial recent documents
         try {
@@ -68,11 +95,20 @@ export function App() {
     };
 
     init();
-  }, []);
+
+    // Listen to browser forward/back buttons
+    const handlePopState = () => {
+      if (targetSlug) syncRouteFromPath(targetSlug);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [syncRouteFromPath]);
 
   const handleNavigate = (tab: string) => {
     setCurrentTab(tab);
     setSelectedDocId(null);
+    const newPath = tab === 'home' ? `/${slug}` : `/${slug}/${tab}`;
+    window.history.pushState({}, '', newPath);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -80,11 +116,13 @@ export function App() {
     setSearchQuery(query);
     setCurrentTab('search');
     setSelectedDocId(null);
+    window.history.pushState({}, '', `/${slug}/search?q=${encodeURIComponent(query)}`);
   };
 
   const handleSelectDocument = (docId: string) => {
     setSelectedDocId(docId);
     setCurrentTab('document');
+    window.history.pushState({}, '', `/${slug}/documents/${docId}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -121,11 +159,16 @@ export function App() {
     );
   }
 
+  const primaryColor = site.theme?.primary_color || '#2563eb';
+
   return (
-    <div className="min-h-screen bg-[#0b0f19] flex flex-col text-zinc-100">
+    <div
+      className="min-h-screen bg-[#0b0f19] flex flex-col text-zinc-100"
+      style={{ '--theme-primary': primaryColor } as React.CSSProperties}
+    >
       <SiteHeader site={site} currentTab={currentTab} onNavigate={handleNavigate} />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pb-24 sm:pb-8">
         {currentTab === 'home' && (
           <HomePage
             site={site}
@@ -156,7 +199,10 @@ export function App() {
           <DocumentDetailPage
             site={site}
             documentId={selectedDocId}
-            onBack={() => setCurrentTab('search')}
+            onBack={() => {
+              setCurrentTab('search');
+              window.history.pushState({}, '', `/${slug}/search`);
+            }}
           />
         )}
 
@@ -164,6 +210,7 @@ export function App() {
       </main>
 
       <SiteFooter />
+      <MobileBottomNav site={site} currentTab={currentTab} onNavigate={handleNavigate} />
     </div>
   );
 }

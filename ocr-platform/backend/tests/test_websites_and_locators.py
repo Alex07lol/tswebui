@@ -24,8 +24,25 @@ async def client():
         yield ac
 
 
+@pytest.fixture
+async def admin_headers(client: AsyncClient):
+    import uuid
+    email = f"admin_{uuid.uuid4().hex[:6]}@example.com"
+    await client.post("/api/auth/register", json={
+        "email": email,
+        "password": "password123",
+        "role": "admin",
+    })
+    res = await client.post("/api/auth/login", json={
+        "email": email,
+        "password": "password123",
+    })
+    token = res.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.asyncio
-async def test_create_website_and_publish_flow(client: AsyncClient):
+async def test_create_website_and_publish_flow(client: AsyncClient, admin_headers: dict[str, str]):
     """Test full admin website lifecycle: creation, update, collection, and publishing."""
     # 1. Create Website
     create_payload = {
@@ -35,7 +52,7 @@ async def test_create_website_and_publish_flow(client: AsyncClient):
         "search_config": {"searchable_fields": ["title", "drawing_number", "project"]},
         "field_mappings": {"title_field": "title", "drawing_number_field": "drawing_number"},
     }
-    resp = await client.post("/api/admin/websites", json=create_payload)
+    resp = await client.post("/api/admin/websites", json=create_payload, headers=admin_headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["name"] == "Engineering Drawing Library"
@@ -48,7 +65,7 @@ async def test_create_website_and_publish_flow(client: AsyncClient):
         "name": "Pump Room Drawings",
         "description": "Mechanical pump equipment layouts",
         "filter_query": {"field": "discipline", "value": "Mechanical"},
-    })
+    }, headers=admin_headers)
     assert coll_resp.status_code == 200
     assert coll_resp.json()["status"] == "ok"
 
@@ -57,7 +74,7 @@ async def test_create_website_and_publish_flow(client: AsyncClient):
     assert pub_check.status_code == 403
 
     # 4. Publish Website
-    pub_resp = await client.post(f"/api/admin/websites/{site_id}/publish")
+    pub_resp = await client.post(f"/api/admin/websites/{site_id}/publish", headers=admin_headers)
     assert pub_resp.status_code == 200
     pub_data = pub_resp.json()
     assert pub_data["status"] == "published"
@@ -73,7 +90,7 @@ async def test_create_website_and_publish_flow(client: AsyncClient):
     assert public_site["collections"][0]["name"] == "Pump Room Drawings"
 
     # 6. Unpublish
-    unpub = await client.post(f"/api/admin/websites/{site_id}/unpublish")
+    unpub = await client.post(f"/api/admin/websites/{site_id}/unpublish", headers=admin_headers)
     assert unpub.status_code == 200
     assert unpub.json()["status"] == "unpublished"
 

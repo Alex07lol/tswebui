@@ -58,6 +58,7 @@ if _HAS_V2_SETTINGS:
 
         log_level: str = "INFO"
         log_format: Literal["json", "console"] = "console"
+        require_admin_auth: bool = True
 
         @field_validator("local_storage_path")
         @classmethod
@@ -102,6 +103,7 @@ else:
 
         log_level: str = "INFO"
         log_format: str = "console"
+        require_admin_auth: bool = True
 
         class Config:
             env_file = ".env"

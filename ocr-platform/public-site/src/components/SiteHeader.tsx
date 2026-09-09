@@ -32,8 +32,8 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ site, currentTab, onNavi
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex items-center space-x-1">
+        {/* Desktop Navigation */}
+        <nav className="hidden sm:flex items-center space-x-1">
           <button
             onClick={() => onNavigate('home')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -61,7 +61,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ site, currentTab, onNavi
               className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 currentTab === 'collections'
                   ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
@@ -80,6 +80,17 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ site, currentTab, onNavi
             <span>About</span>
           </button>
         </nav>
+
+        {/* Mobile Quick Search Action */}
+        <div className="flex sm:hidden items-center space-x-2">
+          <button
+            onClick={() => onNavigate('search')}
+            className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white"
+            title="Search"
+          >
+            <Search className="w-4 h-4 text-blue-400" />
+          </button>
+        </div>
       </div>
     </header>
   );
